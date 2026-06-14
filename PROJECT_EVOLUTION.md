@@ -4,6 +4,48 @@ This file tracks every architectural decision, feature addition, refactor, and A
 
 ---
 
+## Version 1.18.0
+
+2026-06-14
+
+## Prompt Given
+Connect all React pages with Express APIs.
+
+Requirements:
+- Axios integration
+- Loading states
+- Error handling
+- Protected routes
+- JWT authentication
+
+Ensure complete end-to-end functionality.
+
+## Changes Made
+- Connected all remaining frontend pages to the backend Express APIs using the Axios instance defined in `api.js`.
+- Cleaned up legacy non-functional duplicate "Add Expense" modal from `GroupDetails.jsx` and updated the panel tab's "Add Expense" button to route directly to the dedicated `/groups/:id/expenses/add` page via a router Link.
+- Resolved hardcoded `'user-me'` references inside `GroupDetails.jsx` (soft-delete conditions and dropdown selectors) to use `currentUser?.id` and query from database member profiles, preventing database crashes on settle commits.
+- Resolved ReferenceError compile/runtime crashes by adding missing imports:
+  - Imported `X` from `lucide-react` in `BalanceSummary.jsx` for the settlement modal closing trigger.
+  - Imported `Loader2` from `lucide-react` in `ActivityLog.jsx` for the loading feed spinner.
+- Verified successful production build compilation for Vite bundling.
+
+## Files Added
+None
+
+## Files Modified
+- [GroupDetails.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/GroupDetails.jsx)
+- [BalanceSummary.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/BalanceSummary.jsx)
+- [ActivityLog.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ActivityLog.jsx)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+## Reason For Change
+- Fulfill integration constraints to complete end-to-end user operations securely via JWT sessions, correct runtime validation crashes, and standardize layout triggers.
+
+## Impact On Project
+- Solidifies core business workflows where expense creation, debt settlements, CSV uploads, anomaly screen workflows, and timelines synchronize with DB transactions reliably.
+
+---
+
 ## Version 1.17.0
 
 2026-06-14

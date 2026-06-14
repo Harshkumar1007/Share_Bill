@@ -1,0 +1,32 @@
+[
+  {
+    "id": "umokcnc",
+    "type": "SETTLEMENT_ADDED",
+    "userId": "01b3d86c-7245-4890-a387-d114d1241751",
+    "userName": "Alice",
+    "groupId": "4f951c5d-2006-4840-b593-a4e29f04b695",
+    "groupName": "Ski Trip",
+    "message": "Alice paid $100.00 to Bob in group \"Ski Trip\"",
+    "timestamp": "2026-06-14T19:05:32.441Z",
+    "details": {
+      "amount": 100,
+      "fromUserName": "Alice",
+      "toUserName": "Bob"
+    }
+  },
+  {
+    "id": "uvbix67",
+    "type": "EXPENSE_CREATED",
+    "userId": "01b3d86c-7245-4890-a387-d114d1241751",
+    "userName": "Bob",
+    "groupId": "4f951c5d-2006-4840-b593-a4e29f04b695",
+    "groupName": "Ski Trip",
+    "message": "Bob created expense \"Cabin Rental\" of USD 200.00 in group \"Ski Trip\"",
+    "timestamp": "2026-06-14T19:04:57.235Z",
+    "details": {
+      "description": "Cabin Rental",
+      "amount": 200,
+      "currency": "USD"
+    }
+  }
+]

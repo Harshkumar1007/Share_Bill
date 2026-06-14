@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Plus, Trash2, CreditCard, FileSpreadsheet, Search, RefreshCw, ChevronDown, ChevronUp, Calendar, Clock, Database, User } from 'lucide-react';
+import { Activity, Plus, Trash2, CreditCard, FileSpreadsheet, Search, RefreshCw, ChevronDown, ChevronUp, Calendar, Clock, Database, User, Loader2 } from 'lucide-react';
 import { activityService } from '../services/activity.service';
 
 export const ActivityLog = () => {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, CreditCard, CheckCircle, AlertCircle, ArrowRight, User, TrendingUp, DollarSign, Wallet } from 'lucide-react';
+import { ArrowLeft, RefreshCw, CreditCard, CheckCircle, AlertCircle, ArrowRight, User, TrendingUp, DollarSign, Wallet, X } from 'lucide-react';
 import groupService from '../services/group.service';
 import expenseService from '../services/expense.service';
 

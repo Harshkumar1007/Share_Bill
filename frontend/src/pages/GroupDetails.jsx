@@ -302,7 +302,7 @@ export const GroupDetails = () => {
                 <p><span className="font-semibold text-slate-900 dark:text-dark-200">Description:</span> {group.description}</p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <p><span className="font-semibold text-slate-900 dark:text-dark-200">Created Date:</span> {group.createdAt}</p>
-                  <p><span className="font-semibold text-slate-900 dark:text-dark-200">Created By:</span> {group.creator}</p>
+                  <p><span className="font-semibold text-slate-900 dark:text-dark-200">Created By:</span> {group.creator?.name || 'Unknown'}</p>
                 </div>
               </div>
             </div>
@@ -379,7 +379,7 @@ export const GroupDetails = () => {
                     </div>
                     
                     {isActive ? (
-                      m.id !== 'user-me' && (
+                      m.id !== currentUser?.id && (
                         <button
                           onClick={() => handleRemoveMember(m.id)}
                           className="rounded-xl p-2 text-slate-400 hover:bg-red-50 hover:text-red-550 dark:hover:bg-red-950/20 transition-all duration-150"
@@ -409,13 +409,13 @@ export const GroupDetails = () => {
         <div className="rounded-3xl border border-slate-200/80 bg-white overflow-hidden dark:border-dark-800 dark:bg-dark-900 shadow-sm animate-fade-in">
           <div className="p-6 border-b border-slate-150 dark:border-dark-800 flex items-center justify-between">
             <h2 className="text-lg font-bold text-slate-900 dark:text-dark-50">Expenses Log ({expenses.length})</h2>
-            <button
-              onClick={() => { resetExpenseForm(); setShowAddExpense(true); }}
+            <Link
+              to={`/groups/${group.id}/expenses/add`}
               className="flex items-center gap-1.5 text-xs font-bold text-brand-650 hover:text-brand-550 dark:text-brand-400"
             >
               <PlusCircle className="h-4 w-4" />
               Add Expense
-            </button>
+            </Link>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-dark-850">
             {expenses.map((exp) => (
@@ -428,7 +428,7 @@ export const GroupDetails = () => {
                     <div>
                       <h3 className="font-bold text-slate-800 dark:text-dark-100 text-base">{exp.description}</h3>
                       <p className="text-xs text-slate-450 mt-1 dark:text-dark-450">
-                        Paid by <span className="font-semibold text-slate-600 dark:text-dark-300">{exp.paidBy}</span> on {exp.date}
+                        Paid by <span className="font-semibold text-slate-600 dark:text-dark-300">{exp.paidBy?.name || 'Unknown'}</span> on {exp.date}
                       </p>
                       <span className="inline-block mt-2 px-2 py-0.5 rounded-md bg-brand-50 text-brand-600 text-[10px] font-bold dark:bg-brand-950/20 dark:text-brand-400">
                         SPLIT: {exp.splitType}
@@ -444,7 +444,7 @@ export const GroupDetails = () => {
                 <div className="mt-4 pl-16 grid gap-4 grid-cols-2 sm:grid-cols-4">
                   {exp.splits.map((split, sidx) => (
                     <div key={sidx} className="bg-slate-50/50 p-2.5 rounded-xl border border-slate-100 dark:bg-dark-950/20 dark:border-dark-850">
-                      <p className="text-xs font-semibold text-slate-500 dark:text-dark-450 truncate">{split.name}</p>
+                      <p className="text-xs font-semibold text-slate-500 dark:text-dark-450 truncate">{split.user?.name || 'Unknown'}</p>
                       <p className="text-sm font-extrabold text-slate-800 dark:text-dark-150 mt-0.5 font-sans">${split.amount.toFixed(2)}</p>
                     </div>
                   ))}
@@ -612,120 +612,6 @@ export const GroupDetails = () => {
         </div>
       )}
 
-      {/* --- ADD EXPENSE MODAL --- */}
-      {showAddExpense && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 backdrop-blur-sm px-4">
-          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl border border-slate-100 dark:bg-dark-900 dark:border-dark-800 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-slate-900 dark:text-dark-50">Add Expense</h3>
-              <button onClick={() => setShowAddExpense(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-dark-800">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddExpenseSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Description</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Flight Tickets"
-                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-800 dark:bg-dark-950 dark:text-dark-50"
-                  value={expDesc}
-                  onChange={(e) => setExpDesc(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Amount ($)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-800 dark:bg-dark-950 dark:text-dark-50"
-                    value={expAmount}
-                    onChange={(e) => setExpAmount(e.target.value)}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Paid By</label>
-                  <select
-                    className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-800 dark:bg-dark-950 dark:text-dark-50"
-                    value={expPaidBy}
-                    onChange={(e) => setExpPaidBy(e.target.value)}
-                  >
-                    <option value="user-me">You</option>
-                    {group.members.filter(m => m.id !== 'user-me').map(m => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Split Type</label>
-                <select
-                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-800 dark:bg-dark-950 dark:text-dark-50"
-                  value={expSplitType}
-                  onChange={(e) => setExpSplitType(e.target.value)}
-                >
-                  <option value="EQUAL">Split Equally</option>
-                  <option value="PERCENTAGE">Split By Percentages (%)</option>
-                  <option value="EXACT">Split By Exact Amounts ($)</option>
-                  <option value="SHARE">Split By Shares (weights)</option>
-                </select>
-              </div>
-
-              {/* Conditional Inputs based on split type selection */}
-              {expSplitType !== 'EQUAL' && (
-                <div className="space-y-3 p-4 rounded-2xl border border-slate-100 bg-slate-50/50 dark:border-dark-800 dark:bg-dark-950/20">
-                  <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Assign Values</span>
-                  
-                  <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-                    {group.members.map(m => (
-                      <div key={m.id} className="flex items-center justify-between gap-3 text-sm">
-                        <span className="font-semibold text-slate-750">{m.name}</span>
-                        <div className="relative w-32">
-                          <input
-                            type="number"
-                            step="any"
-                            placeholder={expSplitType === 'PERCENTAGE' ? '%' : expSplitType === 'EXACT' ? '$' : 'shares'}
-                            className="w-full rounded-xl border border-slate-200 bg-white py-1.5 px-3 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-700 dark:bg-dark-900 dark:text-dark-50"
-                            value={splitValues[m.id]}
-                            onChange={(e) => {
-                              const updated = { ...splitValues };
-                              updated[m.id] = e.target.value;
-                              setSplitValues(updated);
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100 dark:border-dark-850">
-                <button
-                  type="button"
-                  onClick={() => setShowAddExpense(false)}
-                  className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-50 dark:text-dark-400"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
-                >
-                  Save Expense
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* --- RECORD SETTLE MODAL --- */}
       {showSettleModal && (
@@ -742,13 +628,14 @@ export const GroupDetails = () => {
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Payer (Who Paid)</label>
                 <select
-                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-800 dark:bg-dark-950"
+                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-800 dark:bg-dark-950 dark:text-dark-50"
                   value={settleFrom}
                   onChange={(e) => setSettleFrom(e.target.value)}
                 >
-                  <option value="user-me">You</option>
-                  {group.members.filter(m => m.id !== 'user-me').map(m => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
+                  {group.members.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.id === currentUser?.id ? 'You' : m.name}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -756,13 +643,14 @@ export const GroupDetails = () => {
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Recipient (Who Received)</label>
                 <select
-                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-800 dark:bg-dark-950"
+                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-800 dark:bg-dark-950 dark:text-dark-50"
                   value={settleTo}
                   onChange={(e) => setSettleTo(e.target.value)}
                 >
-                  <option value="user-me">You</option>
-                  {group.members.filter(m => m.id !== 'user-me').map(m => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
+                  {group.members.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.id === currentUser?.id ? 'You' : m.name}
+                    </option>
                   ))}
                 </select>
               </div>
