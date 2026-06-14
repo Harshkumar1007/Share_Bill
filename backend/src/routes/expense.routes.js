@@ -3,7 +3,8 @@ import {
   createExpense,
   getExpensesByGroup,
   deleteExpense,
-  settleUp
+  settleUp,
+  deleteSettlement
 } from '../controllers/expense.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 
@@ -20,5 +21,8 @@ router.route('/:id')
 
 router.route('/settle')
   .post(settleUp);
+
+router.route('/settlements/:id')
+  .delete(deleteSettlement);
 
 export default router;

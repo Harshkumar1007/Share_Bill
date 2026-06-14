@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Plus, 
@@ -9,16 +9,16 @@ import {
   Edit2, 
   Trash2, 
   X, 
-  AlertTriangle 
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
+import { groupService } from '../services/group.service';
 
 export const Groups = () => {
-  // Groups State loaded with baseline data
-  const [groups, setGroups] = useState([
-    { id: 'group-1', name: 'Flatmates', description: 'Shared house rent, utility bills, and food supplies', memberCount: 3, totalExpenses: 340.00, createdAt: '2026-05-15', balance: -15.00 },
-    { id: 'group-2', name: 'Trip to Paris', description: 'Summer holiday flight tickets, hotels, and dinners', memberCount: 4, totalExpenses: 1800.00, createdAt: '2026-06-01', balance: 60.00 },
-    { id: 'group-3', name: 'Office Lunch', description: 'Friday pizzas, coffee runs, and team event costs', memberCount: 8, totalExpenses: 120.00, createdAt: '2026-06-10', balance: 0.00 },
-  ]);
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Modal Control States
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -30,7 +30,27 @@ export const Groups = () => {
   const [description, setDescription] = useState('');
   const [emails, setEmails] = useState(['']); // Multiple members emails array
   const [selectedGroup, setSelectedGroup] = useState(null);
-  const [error, setError] = useState('');
+
+  const fetchGroups = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const res = await groupService.getGroups();
+      if (res && res.success) {
+        setGroups(res.data || []);
+      } else if (Array.isArray(res)) {
+        setGroups(res);
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to fetch groups. Make sure the backend server is running.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchGroups();
+  }, []);
 
   // Handle member email additions in form
   const handleAddEmailField = () => {
@@ -49,7 +69,7 @@ export const Groups = () => {
   };
 
   // CRUD Operations
-  const handleCreateSubmit = (e) => {
+  const handleCreateSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -58,19 +78,27 @@ export const Groups = () => {
       return;
     }
 
-    const newGroup = {
-      id: `group-${Date.now()}`,
-      name: name.trim(),
-      description: description.trim(),
-      memberCount: emails.filter(email => email.trim() !== '').length + 1, // +1 for the creator
-      totalExpenses: 0,
-      createdAt: new Date().toISOString().split('T')[0],
-      balance: 0
-    };
+    setIsSubmitting(true);
+    try {
+      const cleanEmails = emails.filter(email => email.trim() !== '');
+      const res = await groupService.createGroup({
+        name: name.trim(),
+        description: description.trim(),
+        memberEmails: cleanEmails
+      });
 
-    setGroups([...groups, newGroup]);
-    resetForm();
-    setIsCreateOpen(false);
+      if (res.success && res.data) {
+        await fetchGroups();
+        resetForm();
+        setIsCreateOpen(false);
+      } else {
+        setError(res.error || 'Failed to create group.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to create group.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleEditClick = (group) => {
@@ -80,7 +108,7 @@ export const Groups = () => {
     setIsEditOpen(true);
   };
 
-  const handleEditSubmit = (e) => {
+  const handleEditSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -89,15 +117,25 @@ export const Groups = () => {
       return;
     }
 
-    setGroups(groups.map(g => {
-      if (g.id === selectedGroup.id) {
-        return { ...g, name: name.trim(), description: description.trim() };
-      }
-      return g;
-    }));
+    setIsSubmitting(true);
+    try {
+      const res = await groupService.updateGroup(selectedGroup.id, {
+        name: name.trim(),
+        description: description.trim()
+      });
 
-    resetForm();
-    setIsEditOpen(false);
+      if (res.success) {
+        await fetchGroups();
+        resetForm();
+        setIsEditOpen(false);
+      } else {
+        setError(res.error || 'Failed to update group.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update group.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDeleteClick = (group) => {
@@ -105,10 +143,23 @@ export const Groups = () => {
     setIsDeleteOpen(true);
   };
 
-  const handleDeleteConfirm = () => {
-    setGroups(groups.filter(g => g.id !== selectedGroup.id));
-    setIsDeleteOpen(false);
-    setSelectedGroup(null);
+  const handleDeleteConfirm = async () => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const res = await groupService.deleteGroup(selectedGroup.id);
+      if (res.success) {
+        setGroups(prev => prev.filter(g => g.id !== selectedGroup.id));
+        setIsDeleteOpen(false);
+        setSelectedGroup(null);
+      } else {
+        setError(res.error || 'Failed to delete group.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete group.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const resetForm = () => {
@@ -137,172 +188,188 @@ export const Groups = () => {
         </button>
       </div>
 
+      {error && (
+        <div className="rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-650 flex items-center gap-2 dark:bg-red-950/20 dark:text-red-400 border border-red-200/40 animate-fade-in">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          {error}
+        </div>
+      )}
+
       {/* Grid of Groups */}
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {groups.map((group) => (
-          <div
-            key={group.id}
-            className="flex flex-col justify-between rounded-3xl border border-slate-200/80 bg-white p-6 dark:border-dark-800 dark:bg-dark-900 shadow-sm hover:shadow-md hover:border-brand-500/25 transition-all duration-200"
-          >
-            <div>
-              {/* Card Header */}
-              <div className="flex items-center justify-between mb-4">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 dark:bg-brand-950/30 text-brand-650 dark:text-brand-405">
-                  <Users className="h-5 w-5" />
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-xl bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 dark:bg-dark-800 dark:text-dark-400">
-                  {group.memberCount} members
-                </span>
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+          <Loader2 className="h-10 w-10 animate-spin text-brand-650" />
+          <p className="text-sm font-semibold mt-4">Loading your groups...</p>
+        </div>
+      ) : groups.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-slate-250 dark:border-dark-800 p-16 text-center flex flex-col items-center justify-center bg-white/30 dark:bg-dark-900/10">
+          <Users className="h-12 w-12 text-slate-350 dark:text-dark-600 mb-4" />
+          <p className="text-sm font-bold text-slate-700 dark:text-dark-200">No groups found</p>
+          <p className="text-xs text-slate-450 dark:text-dark-450 mt-1">Create your first group to start logging shared expenses!</p>
+        </div>
+      ) : (
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {groups.map((group) => (
+            <div
+              key={group.id}
+              className="flex flex-col justify-between rounded-3xl border border-slate-200/80 bg-white p-6 dark:border-dark-800 dark:bg-dark-900 shadow-sm hover:shadow-md hover:border-brand-500/25 transition-all duration-200"
+            >
+              <div>
+                {/* Card Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 dark:bg-brand-950/30 text-brand-650 dark:text-brand-405">
+                    <Users className="h-5 w-5" />
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-xl bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 dark:bg-dark-800 dark:text-dark-400">
+                    {group.memberCount} members
+                  </span>
+                </div>
+
+                {/* Title & Description */}
+                <h2 className="text-xl font-bold text-slate-900 dark:text-dark-50 tracking-tight leading-tight">
+                  {group.name}
+                </h2>
+                <p className="text-sm text-slate-455 mt-2 dark:text-dark-450 line-clamp-2 min-h-[40px]">
+                  {group.description || 'No description provided.'}
+                </p>
               </div>
 
-              {/* Title & Description */}
-              <h2 className="text-xl font-bold text-slate-900 dark:text-dark-50 tracking-tight leading-tight">
-                {group.name}
-              </h2>
-              <p className="text-sm text-slate-455 mt-2 dark:text-dark-450 line-clamp-2 min-h-[40px]">
-                {group.description || 'No description provided.'}
-              </p>
-            </div>
-
-            {/* Middle Stats Section */}
-            <div className="mt-6 space-y-2.5 border-t border-slate-100 dark:border-dark-850 pt-4 text-xs text-slate-500 dark:text-dark-450">
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 font-semibold">
-                  <DollarSign className="h-4 w-4 text-slate-400" />
-                  Total Spending
-                </span>
-                <span className="font-extrabold text-sm text-slate-800 dark:text-dark-150">${group.totalExpenses.toFixed(2)}</span>
+              {/* Middle Stats Section */}
+              <div className="mt-6 space-y-2.5 border-t border-slate-100 dark:border-dark-850 pt-4 text-xs text-slate-500 dark:text-dark-450">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-semibold">
+                    <DollarSign className="h-4 w-4 text-slate-400" />
+                    Total Spending
+                  </span>
+                  <span className="font-extrabold text-sm text-slate-800 dark:text-dark-150">${group.totalExpenses.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-semibold">
+                    <Calendar className="h-4 w-4 text-slate-400" />
+                    Created Date
+                  </span>
+                  <span className="font-extrabold text-slate-800 dark:text-dark-150">{new Date(group.createdAt).toLocaleDateString()}</span>
+                </div>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 font-semibold">
-                  <Calendar className="h-4 w-4 text-slate-400" />
-                  Created Date
-                </span>
-                <span className="font-bold text-slate-700 dark:text-dark-300">{group.createdAt}</span>
-              </div>
-            </div>
 
-            {/* Actions Footer */}
-            <div className="mt-6 pt-4 border-t border-slate-100 dark:border-dark-850 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => handleEditClick(group)}
-                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700 dark:hover:bg-dark-800 transition-colors"
-                  aria-label="Edit group"
+              {/* Action Buttons */}
+              <div className="mt-6 flex items-center justify-between gap-3 border-t border-slate-100 dark:border-dark-850 pt-4">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => handleEditClick(group)}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-650 dark:hover:bg-dark-800/60 dark:hover:text-dark-100 transition-colors"
+                    title="Edit group"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteClick(group)}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-650 dark:hover:bg-red-950/20 dark:hover:text-red-400 transition-colors"
+                    title="Delete group"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <Link
+                  to={`/groups/${group.id}`}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-brand-650 hover:text-brand-550 dark:text-brand-400 transition-colors"
                 >
-                  <Edit2 className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => handleDeleteClick(group)}
-                  className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-650 dark:hover:bg-red-950/20 transition-colors"
-                  aria-label="Delete group"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                  View Details
+                  <ChevronRight className="h-4 w-4" />
+                </Link>
               </div>
-
-              <Link
-                to={`/groups/${group.id}`}
-                className="inline-flex items-center gap-1 text-sm font-bold text-brand-650 hover:text-brand-550 dark:text-brand-400 dark:hover:text-brand-300 transition-all duration-150 group"
-              >
-                View Splits
-                <ChevronRight className="h-4.5 w-4.5 group-hover:translate-x-0.5 transition-transform" />
-              </Link>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* --- CREATE MODAL --- */}
       {isCreateOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 backdrop-blur-sm px-4">
-          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl border border-slate-100 dark:bg-dark-900 dark:border-dark-800 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-slate-900 dark:text-dark-50 tracking-tight">Create New Group</h3>
-              <button onClick={() => setIsCreateOpen(false)} className="rounded-lg p-1.5 text-slate-450 hover:bg-slate-100 dark:hover:bg-dark-800">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl border border-slate-100 dark:bg-dark-900 dark:border-dark-800 space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-dark-850 pb-4">
+              <h3 className="text-xl font-bold text-slate-900 dark:text-dark-50">Create New Group</h3>
+              <button
+                onClick={() => setIsCreateOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-50 dark:hover:bg-dark-800"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            
-            {error && (
-              <div className="mb-4 rounded-xl bg-red-50 p-3.5 text-sm font-semibold text-red-600 border border-red-200/50">
-                {error}
-              </div>
-            )}
 
             <form onSubmit={handleCreateSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Group Name</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 dark:text-dark-405 uppercase tracking-wider">Group Name</label>
                 <input
                   type="text"
-                  placeholder="e.g. Paris Getaway 2026"
-                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-dark-800 dark:bg-dark-950 dark:text-dark-50"
+                  required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  required
+                  className="w-full rounded-xl border border-slate-200 dark:border-dark-750 bg-transparent py-2.5 px-3.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 dark:text-dark-100"
+                  placeholder="e.g. Summer Holiday 2026"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Description</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 dark:text-dark-405 uppercase tracking-wider">Description</label>
                 <textarea
-                  placeholder="What is this group for?"
-                  rows="2"
-                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-dark-800 dark:bg-dark-950 dark:text-dark-50 resize-none"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
+                  rows={2}
+                  className="w-full rounded-xl border border-slate-200 dark:border-dark-750 bg-transparent py-2.5 px-3.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 dark:text-dark-100 resize-none"
+                  placeholder="e.g. Shared flight, lodging, and dining bills..."
                 />
               </div>
 
-              {/* Members Emails Fields */}
-              <div className="space-y-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Group Members Emails</label>
-                <p className="text-[11px] text-slate-450 mb-2">Add email addresses to send split alerts.</p>
-                
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-slate-500 dark:text-dark-405 uppercase tracking-wider flex items-center justify-between">
+                  <span>Group Members Emails (Optional)</span>
+                  <button
+                    type="button"
+                    onClick={handleAddEmailField}
+                    className="text-xs font-bold text-brand-650 dark:text-brand-400 hover:underline"
+                  >
+                    + Add member
+                  </button>
+                </label>
                 <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-                  {emails.map((email, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
+                  {emails.map((email, index) => (
+                    <div key={index} className="flex gap-2">
                       <input
                         type="email"
-                        placeholder="member@example.com"
-                        className="flex-1 rounded-2xl border border-slate-200 bg-white py-2 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-800 dark:bg-dark-950 dark:text-dark-50"
                         value={email}
-                        onChange={(e) => handleEmailChange(idx, e.target.value)}
+                        onChange={(e) => handleEmailChange(index, e.target.value)}
+                        className="flex-1 rounded-xl border border-slate-200 dark:border-dark-750 bg-transparent py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 dark:text-dark-100"
+                        placeholder="member@example.com"
                       />
                       <button
                         type="button"
-                        onClick={() => handleRemoveEmailField(idx)}
-                        className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-red-500 dark:hover:bg-dark-800"
+                        onClick={() => handleRemoveEmailField(index)}
+                        className="rounded-xl border border-slate-200 p-2 hover:bg-red-50 hover:text-red-650 dark:border-dark-750 dark:hover:bg-red-950/20"
                       >
-                        <X className="h-4.5 w-4.5" />
+                        <X className="h-4 w-4" />
                       </button>
                     </div>
                   ))}
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleAddEmailField}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-650 hover:text-brand-550 dark:text-brand-400 mt-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Another Member
-                </button>
               </div>
 
               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100 dark:border-dark-850">
                 <button
                   type="button"
                   onClick={() => setIsCreateOpen(false)}
-                  className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-50 dark:text-dark-400 dark:hover:bg-dark-850"
+                  className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-50 dark:text-dark-400"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+                  disabled={isSubmitting}
+                  className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
                 >
-                  Create Group
+                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Create
                 </button>
               </div>
             </form>
@@ -311,41 +378,40 @@ export const Groups = () => {
       )}
 
       {/* --- EDIT MODAL --- */}
-      {isEditOpen && (
+      {isEditOpen && selectedGroup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 backdrop-blur-sm px-4">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl border border-slate-100 dark:bg-dark-900 dark:border-dark-800">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-slate-900 dark:text-dark-50 tracking-tight">Edit Group Details</h3>
-              <button onClick={() => setIsEditOpen(false)} className="rounded-lg p-1.5 text-slate-450 hover:bg-slate-100 dark:hover:bg-dark-800">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl border border-slate-100 dark:bg-dark-900 dark:border-dark-800 space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-dark-850 pb-4">
+              <h3 className="text-xl font-bold text-slate-900 dark:text-dark-50">Edit Group Details</h3>
+              <button
+                onClick={() => setIsEditOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-50 dark:hover:bg-dark-800"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            {error && (
-              <div className="mb-4 rounded-xl bg-red-50 p-3.5 text-sm font-semibold text-red-650 border border-red-200/50">
-                {error}
-              </div>
-            )}
-
             <form onSubmit={handleEditSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Group Name</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 dark:text-dark-405 uppercase tracking-wider">Group Name</label>
                 <input
                   type="text"
-                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-800 dark:bg-dark-950 dark:text-dark-50"
+                  required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  required
+                  className="w-full rounded-xl border border-slate-200 dark:border-dark-750 bg-transparent py-2.5 px-3.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 dark:text-dark-100"
+                  placeholder="e.g. Summer Holiday 2026"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Description</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 dark:text-dark-405 uppercase tracking-wider">Description</label>
                 <textarea
-                  rows="3"
-                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-800 dark:bg-dark-950 dark:text-dark-50 resize-none"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-xl border border-slate-200 dark:border-dark-750 bg-transparent py-2.5 px-3.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 dark:text-dark-100 resize-none"
+                  placeholder="e.g. Shared flight, lodging, and dining bills..."
                 />
               </div>
 
@@ -359,8 +425,10 @@ export const Groups = () => {
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+                  disabled={isSubmitting}
+                  className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
                 >
+                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   Save Changes
                 </button>
               </div>
@@ -378,8 +446,8 @@ export const Groups = () => {
             </div>
             
             <h3 className="text-lg font-bold text-slate-900 dark:text-dark-50">Delete Group?</h3>
-            <p className="text-xs text-slate-500 leading-relaxed dark:text-dark-405">
-              Are you sure you want to delete <span className="font-bold text-slate-800 dark:text-dark-100">"{selectedGroup.name}"</span>? All historical transaction records and balances will be lost permanently.
+            <p className="text-xs text-slate-550 leading-relaxed dark:text-dark-405">
+              Are you sure you want to delete <span className="font-bold text-slate-800 dark:text-dark-150">"{selectedGroup.name}"</span>? All historical transaction records and balances will be lost permanently.
             </p>
 
             <div className="flex gap-3 pt-4 border-t border-slate-100 dark:border-dark-850">
@@ -393,8 +461,10 @@ export const Groups = () => {
               <button
                 type="button"
                 onClick={handleDeleteConfirm}
-                className="flex-1 rounded-xl bg-red-650 py-2.5 text-sm font-semibold text-white hover:bg-red-500"
+                disabled={isSubmitting}
+                className="flex-1 rounded-xl bg-red-650 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Delete
               </button>
             </div>

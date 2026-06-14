@@ -11,9 +11,14 @@ import Register from '../pages/Register';
 import Dashboard from '../pages/Dashboard';
 import Groups from '../pages/Groups';
 import GroupDetails from '../pages/GroupDetails';
+import AddExpense from '../pages/AddExpense';
+import BalanceSummary from '../pages/BalanceSummary';
 import Expenses from '../pages/Expenses';
 import ImportCSV from '../pages/ImportCSV';
 import ImportReport from '../pages/ImportReport';
+import AnomalyReview from '../pages/AnomalyReview';
+import ImportSummaryReport from '../pages/ImportSummaryReport';
+import ActivityLog from '../pages/ActivityLog';
 import NotFound from '../pages/NotFound';
 
 export const AppRoutes = () => {
@@ -29,9 +34,14 @@ export const AppRoutes = () => {
           <Route path="/" element={<Dashboard />} />
           <Route path="/groups" element={<Groups />} />
           <Route path="/groups/:id" element={<GroupDetails />} />
+          <Route path="/groups/:id/expenses/add" element={<AddExpense />} />
+          <Route path="/groups/:id/balances" element={<BalanceSummary />} />
           <Route path="/expenses" element={<Expenses />} />
           <Route path="/import" element={<ImportCSV />} />
           <Route path="/import/report" element={<ImportReport />} />
+          <Route path="/import/anomalies" element={<AnomalyReview />} />
+          <Route path="/import/summary" element={<ImportSummaryReport />} />
+          <Route path="/activities" element={<ActivityLog />} />
         </Route>
       </Route>
 

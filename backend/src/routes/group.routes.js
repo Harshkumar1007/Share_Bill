@@ -3,6 +3,8 @@ import {
   createGroup,
   getGroups,
   getGroupById,
+  updateGroup,
+  deleteGroup,
   addMember,
   removeMember,
   getGroupBalances
@@ -22,7 +24,9 @@ router.route('/')
   .get(getGroups);
 
 router.route('/:id')
-  .get(getGroupById);
+  .get(getGroupById)
+  .put(updateGroup)
+  .delete(deleteGroup);
 
 router.route('/:id/members')
   .post(addMember);

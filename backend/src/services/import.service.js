@@ -14,7 +14,6 @@ export const parseCSV = (csvContent) => {
 
   // Parse headers
   const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-  const expectedHeaders = ['description', 'amount', 'date', 'groupid', 'paidbyid'];
   
   // Create a mapping of expected header to column index
   const headerMap = {};
@@ -25,6 +24,7 @@ export const parseCSV = (csvContent) => {
     else if (header.includes('date') || header === 'time') headerMap['date'] = idx;
     else if (header.includes('group') || header.includes('groupid')) headerMap['groupid'] = idx;
     else if (header.includes('paid') || header.includes('paidbyid')) headerMap['paidbyid'] = idx;
+    else if (header.includes('curr') || header === 'currency') headerMap['currency'] = idx;
   });
 
   // Verify core headers are present
@@ -44,44 +44,33 @@ export const parseCSV = (csvContent) => {
   const errors = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const row = lines[i].split(',').map(cell => cell.trim());
+    const rawLine = lines[i].trim();
+    if (!rawLine) continue;
+
+    const row = rawLine.split(',').map(cell => cell.trim());
     
-    // Skip row if it doesn't match column size (approximate check)
-    if (row.length < Object.keys(headerMap).length) {
-      errors.push({ line: i + 1, message: 'Incomplete columns, skipping row.' });
-      continue;
-    }
-
-    const description = row[headerMap['description']];
-    const amountStr = row[headerMap['amount']];
-    const dateStr = headerMap['date'] !== undefined ? row[headerMap['date']] : '';
-    const groupId = row[headerMap['groupid']];
-    const paidById = headerMap['paidbyid'] !== undefined ? row[headerMap['paidbyid']] : 'default-user';
-
-    // Validate fields
-    if (!description) {
-      errors.push({ line: i + 1, message: 'Description is required.' });
-      continue;
-    }
+    const description = headerMap['description'] !== undefined ? (row[headerMap['description']] || '') : '';
+    const amountStr = headerMap['amount'] !== undefined ? (row[headerMap['amount']] || '') : '';
+    const dateStr = headerMap['date'] !== undefined ? (row[headerMap['date']] || '') : '';
+    const groupId = headerMap['groupid'] !== undefined ? (row[headerMap['groupid']] || '') : '';
+    const paidById = headerMap['paidbyid'] !== undefined ? (row[headerMap['paidbyid']] || '') : '';
+    const currency = headerMap['currency'] !== undefined ? (row[headerMap['currency']] || '') : '';
 
     const amount = parseFloat(amountStr);
-    if (isNaN(amount) || amount <= 0) {
-      errors.push({ line: i + 1, message: `Invalid amount "${amountStr}". Must be positive number.` });
-      continue;
-    }
-
-    const date = dateStr ? new Date(dateStr) : new Date();
-    if (dateStr && isNaN(date.getTime())) {
-      errors.push({ line: i + 1, message: `Invalid date format "${dateStr}". Falling back to current date.` });
-    }
+    const parsedAmount = isNaN(amount) ? null : amount;
+    const date = dateStr ? new Date(dateStr) : null;
+    const parsedDate = date && !isNaN(date.getTime()) ? date : null;
 
     parsedExpenses.push({
+      line: i + 1,
       description,
-      amount,
-      date: isNaN(date.getTime()) ? new Date() : date,
+      amount: parsedAmount,
+      rawAmount: amountStr,
+      date: parsedDate,
+      rawDate: dateStr,
       groupId,
       paidById,
-      splits: [] // Placeholder for parsed splits
+      currency
     });
   }
 

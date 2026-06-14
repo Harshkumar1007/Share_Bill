@@ -4,6 +4,376 @@ This file tracks every architectural decision, feature addition, refactor, and A
 
 ---
 
+## Version 1.17.0
+
+2026-06-14
+
+## Prompt Given
+Create Activity Log page.
+
+Track:
+- Expense Created
+- Expense Edited
+- Expense Deleted
+- Settlement Added
+- CSV Import Actions
+
+Show timeline view.
+
+## Changes Made
+- Engineered a database-independent backend activity logging service `activity.service.js` that records actions (expense logging, deletions, settle ups, settlement voids, and CSV spreadsheet imports) inside `backend/src/data/activities.json` to bypass schema migrations.
+- Created `activity.controller.js` and registered the protected route `GET /api/activities` in `activity.routes.js` and mounted it under `/activities` in the main routing dispatcher.
+- Integrated activity log triggers in `expense.controller.js` (for expense creations, deletions, settlement additions, and settlement deletions) and `import.controller.js` (for CSV imports).
+- Created the frontend client `activity.service.js` to retrieve activities.
+- Implemented `/activities` route in `AppRoutes.jsx` rendering the new `ActivityLog.jsx` page.
+- Created `ActivityLog.jsx` containing a vertical timeline view with color-coded Lucide icon nodes, inline filters, live text query matching, and expandable details cards.
+- Integrated the "Activity Log" option in `Sidebar.jsx`.
+
+## Files Added
+- [activity.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/activity.service.js)
+- [activity.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/activity.controller.js)
+- [activity.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/activity.routes.js)
+- [activity.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/activity.service.js)
+- [ActivityLog.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ActivityLog.jsx)
+
+## Files Modified
+- [index.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/index.js)
+- [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js)
+- [import.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/import.controller.js)
+- [AppRoutes.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/routes/AppRoutes.jsx)
+- [Sidebar.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/components/layout/Sidebar.jsx)
+
+## Reason For Change
+- Fulfill requirements to maintain audit trails for group changes (expenses and settlements) and CSV uploads, and present them in a timeline interface.
+
+## Impact On Project
+- Group members can now monitor history trails of actions, checking who logged or removed entries, and inspect metadata fields directly.
+
+---
+
+## Version 1.16.0
+
+2026-06-14
+
+## Prompt Given
+Create Import Report page.
+
+Show:
+- Total rows
+- Imported rows
+- Flagged rows
+- Anomaly summary
+- Actions taken
+
+Display report after CSV import.
+
+## Changes Made
+- Created new frontend page `ImportSummaryReport.jsx` to render post-import summary details (total rows, imported rows, flagged warnings, discarded rows, corrected rows) with detailed log bullet lists of actions taken and anomaly summary check results.
+- Registered `/import/summary` route in `AppRoutes.jsx` mapping to the new `ImportSummaryReport` component.
+- Updated `ImportReport.jsx` to navigate to `/import/summary` on successful imports, passing original count, successfully committed counts, skipped counts, and action bullet item texts.
+- Modified `AnomalyReview.jsx` to calculate user correction counts and discarded ids, passing these values as metrics to `/import/summary` upon batch database commits.
+
+## Files Added
+- [ImportSummaryReport.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportSummaryReport.jsx)
+
+## Files Modified
+- [AppRoutes.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/routes/AppRoutes.jsx)
+- [ImportReport.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportReport.jsx)
+- [AnomalyReview.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/AnomalyReview.jsx)
+
+## Reason For Change
+- Deliver post-import audit transparency, confirming final record numbers and details of skipped/edited spreadsheet rows.
+
+## Impact On Project
+- Users now have complete confirmation closure of CSV transactions, knowing exactly what was created, discarded, or corrected.
+
+---
+
+## Version 1.15.0
+
+2026-06-14
+
+## Prompt Given
+Create Anomaly Review page.
+
+Detect and display:
+- Duplicate expenses
+- Missing payer
+- Invalid date
+- Negative amount
+- Missing currency
+- Membership conflicts
+
+Allow user approval before applying changes.
+
+## Changes Made
+- Upgraded backend `parseCSV` inside `import.service.js` to parse all rows leniently instead of dropping rows with invalid fields, preserving raw input values and row line numbers.
+- Refactored backend `scanForAnomalies` in `anomaly.service.js` to run asynchronously and scan for the 6 requested categories of anomalies (using database checks to detect group membership conflicts and duplicate entries within the last 7 days).
+- Implemented frontend `/import/anomalies` route rendering the new `AnomalyReview.jsx` workspace page.
+- Created `AnomalyReview.jsx` containing card-based grids with live error validators, inline inputs for all fields, active member dropdowns loaded dynamically and cached, and row discard triggers.
+- Enhanced `ImportReport.jsx` to render a warning block card with a CTA button directing the user to `/import/anomalies` if there are any screened anomalies.
+
+## Files Added
+- [AnomalyReview.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/AnomalyReview.jsx)
+
+## Files Modified
+- [import.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/import.service.js)
+- [anomaly.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/anomaly.service.js)
+- [import.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/import.controller.js)
+- [AppRoutes.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/routes/AppRoutes.jsx)
+- [ImportReport.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportReport.jsx)
+
+## Reason For Change
+- Fulfill requirements to prevent data loss on invalid CSV rows, detect complex duplicates/conflicts against database tables, and let users fix import errors visually before final commits.
+
+## Impact On Project
+- Users can now upload and resolve raw spreadsheet files directly in the UI, cleaning date/amount/payer errors interactively rather than failing import runs or maintaining manually updated spreadsheets.
+
+---
+
+## Version 1.14.0
+
+2026-06-14
+
+## Prompt Given
+Create CSV Import page.
+
+Features:
+- Upload CSV
+- Preview records
+- Import data
+- Show validation status
+
+Do not process anomalies yet.
+
+## Changes Made
+- Implemented backend batch transaction endpoint `commitImportedExpenses` in `import.controller.js` to process validated CSV expense items, retrieve active group members, partition amounts equally, and save records using a single Prisma transaction.
+- Registered `/api/import/commit` route inside `import.routes.js`.
+- Created frontend API service client `import.service.js` wrapping `uploadCSV`, `commitImport`, and `getReportHistory` endpoints.
+- Modified frontend `ImportCSV.jsx` to upload the CSV file using the real upload service and transition the parsed report payload to the report details page.
+- Refactored `ImportReport.jsx` to fetch active groups, execute row validation (verifying whether group ID exists), show custom color-coded validation badges, and process transactions on clicking "Approve and Import".
+
+## Files Added
+- [import.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/import.service.js)
+
+## Files Modified
+- [import.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/import.controller.js)
+- [import.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/import.routes.js)
+- [ImportCSV.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportCSV.jsx)
+- [ImportReport.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportReport.jsx)
+
+## Reason For Change
+- Fulfill core bulk import requirements, enabling user approval before database commits, using transactional database operations to write expenses and equal participant splits.
+
+## Impact On Project
+- Enhances utility by allowing users to bulk-upload their bills from CSV files, visualising the imported rows with safety validation rules before making structural database changes.
+
+---
+
+## Version 1.13.0
+
+2026-06-14
+
+## Prompt Given
+Create Settlement module.
+
+Features:
+- Record payment
+- Mark debt as settled
+- Settlement history
+
+Update balances automatically.
+
+## Changes Made
+- Implemented the `deleteSettlement` controller action in `expense.controller.js` to delete settlement logs.
+- Registered nested DELETE `/settlements/:id` route in `expense.routes.js` to remove recorded payments.
+- Added the `deleteSettlement` method inside the frontend `expense.service.js` client.
+- Redesigned the Settlement Logs history card in `GroupDetails.jsx` to display participant details alongside date tags.
+- Hooked deletion triggers to confirm inputs and automatically re-evaluate group standing balances upon payment cancellation.
+
+## Files Added
+None
+
+## Files Modified
+- [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js)
+- [expense.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/expense.routes.js)
+- [expense.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/expense.service.js)
+- [GroupDetails.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/GroupDetails.jsx)
+
+## Reason For Change
+- Deliver a comprehensive Settlement management module that handles payments, maintains history list sheets, and recalculates debt standings cleanly.
+
+## Impact On Project
+- Users can now undo recorded payments if logged in error, which restores balances instantly.
+
+---
+
+## Version 1.12.0
+
+2026-06-14
+
+## Prompt Given
+Create Balance Summary page.
+
+Requirements:
+- Calculate net balance
+- Show who owes whom
+- Settlement suggestions
+
+Example:
+Rohan owes Aisha ₹2300
+Sam owes Dev ₹500
+
+Keep layout similar to Tricount.
+
+## Changes Made
+- Implemented real database net balance calculations and debt optimization matching algorithms in the `getGroupBalances` controller inside `group.controller.js`.
+- Created the dedicated frontend `BalanceSummary.jsx` page component displaying standing net balances, spent vs. share metrics per user, and suggested matches with pre-filled quick settle modal overlays.
+- Restructured `GroupDetails.jsx` to fetch active group details, members lists, expenses history, and net standings directly from the database endpoints.
+- Integrated currency selector dropdowns on the frontend to isolate balances, spending, and suggestions cleanly by currency.
+- Registered `/groups/:id/balances` route mapping in `AppRoutes.jsx` and added navigate links in the tab deck panels of `GroupDetails.jsx`.
+
+## Files Added
+- [BalanceSummary.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/BalanceSummary.jsx)
+
+## Files Modified
+- [group.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/group.controller.js)
+- [AppRoutes.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/routes/AppRoutes.jsx)
+- [GroupDetails.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/GroupDetails.jsx)
+
+## Reason For Change
+- Fulfill requirements to calculate net balances dynamically from database entries and display optimal transaction suggestions in a numbers-focused Tricount layout.
+
+## Impact On Project
+- Users now have access to real-time calculated debt standings and matching suggestions, allowing them to settle balances with immediate updates reflecting in the group database.
+
+---
+
+## Version 1.11.0
+
+2026-06-14
+
+## Prompt Given
+Create Expenses page.
+
+Features:
+- List all expenses
+- Filter by member
+- Filter by date
+- Search by description
+- View expense details
+
+Use table layout.
+
+## Changes Made
+- Implemented global `getAllUserExpenses` controller action in `expense.controller.js` to query all expenses across groups the user belongs to.
+- Created `globalExpense.routes.js` and registered `/api/expenses` in the backend index router.
+- Added `getAllExpenses` call inside the frontend `expense.service.js`.
+- Refactored `Expenses.jsx` to construct a detailed table displaying date, description, group (with navigation link), paid-by member, split strategy, and total amounts.
+- Engineered search filters by member, date-range bounds, and description matches on the client-side list state.
+- Integrated a high-fidelity detail overlay modal showing total amounts, currencies, payer identity, split weight inputs (percentages/shares/amounts), computed share distributions, and a delete action restricted to the expense payer.
+
+## Files Added
+- [globalExpense.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/globalExpense.routes.js)
+
+## Files Modified
+- [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js)
+- [index.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/index.js)
+- [expense.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/expense.service.js)
+- [Expenses.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/Expenses.jsx)
+
+## Reason For Change
+- Deliver a global bills ledger allowing users to search, filter, and inspect splitting weight breakages and payee details across all of their active groups.
+
+## Impact On Project
+- Users now have complete visibility over their historical transactions across all active groups with granular filtering tools.
+
+---
+
+## Version 1.10.0
+
+2026-06-14
+
+## Prompt Given
+Create Add Expense page.
+
+Fields:
+- Description
+- Amount
+- Currency
+- Paid By
+- Date
+- Participants
+- Split Type
+
+Split Types:
+- Equal
+- Percentage
+- Exact Amount
+- Share Based
+
+Generate frontend and backend logic.
+
+## Changes Made
+- Modified the database schema (`schema.prisma`) to add `currency` support to the `Expense` model.
+- Implemented backend database-backed controllers for groups (`createGroup`, `getGroups`, `getGroupById`) and expenses (`createExpense` with splits calculation transactions, `getExpensesByGroup`, `deleteExpense`, `settleUp`) in `group.controller.js` and `expense.controller.js`.
+- Built the dedicated `AddExpense.jsx` frontend page featuring input forms for description, amount, currency selection, paid by select, date picker, active participant checkboxes, and split strategy selectors with live allocation math and client-side validation logic.
+- Wired the "Add Expense" button in `GroupDetails.jsx` to route users directly to the new `AddExpense` form path.
+- Registered `/groups/:id/expenses/add` route mapping in `AppRoutes.jsx`.
+
+## Files Added
+- [AddExpense.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/AddExpense.jsx)
+
+## Files Modified
+- [schema.prisma](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/prisma/schema.prisma)
+- [group.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/group.controller.js)
+- [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js)
+- [AppRoutes.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/routes/AppRoutes.jsx)
+- [GroupDetails.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/GroupDetails.jsx)
+
+## Reason For Change
+- Fulfill core requirement to allow logging new expense items dynamically calculated and validated according to diverse splitting logic rules, backed by ACID database transaction commits.
+
+## Impact On Project
+- Users can now navigate to a dedicated form page, choose custom currencies, select participating members, and apply precise equal, exact, percentage, or share splits that insert cleanly into PostgreSQL via Prisma.
+
+---
+
+## Version 1.9.0
+
+2026-06-14
+
+## Prompt Given
+Create Member Management module.
+Features:
+- Add Member
+- Remove Member
+- Join Date
+- Leave Date
+Store membership timeline for future balance calculations.
+
+## Changes Made
+- Programmed active database queries in `group.controller.js` to handle `addMember` (with duplicate scans and rejoining) and `removeMember` (triggering soft-delete `leftAt` updates).
+- Restructured frontend `GroupDetails.jsx` to list member statuses, displaying joined dates and left dates.
+- Integrated a modal form uploader to add new members inside the Members panel.
+- Wired a soft-leave triggers that set member `leftAt` timestamps and toggle them to inactive.
+- Filtered splits calculations to exclude inactive members from new expense logs.
+
+## Files Added
+None
+
+## Files Modified
+- [group.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/group.controller.js)
+- [GroupDetails.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/GroupDetails.jsx)
+
+## Reason For Change
+- Retain transaction records and calculation history when users join/leave active groups.
+
+## Impact On Project
+- User balances remain correct over past entries, while excluding former members from splits of new expenses.
+
+---
+
 ## Version 1.8.0
 
 2026-06-14

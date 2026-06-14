@@ -1,10 +1,17 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { AlertTriangle, CheckCircle, Info, ArrowLeft, Check, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Info, ArrowLeft, Check, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import { importService } from '../services/import.service';
+import { groupService } from '../services/group.service';
 
 export const ImportReport = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
   
   // Retrieve passed file details or use default mockup report structures
   const fileData = location.state || {
@@ -30,9 +37,67 @@ export const ImportReport = () => {
 
   const { report } = fileData;
 
-  const handleApprove = () => {
-    // Boilerplate redirect with mock success notification
-    navigate('/');
+  useEffect(() => {
+    const fetchGroups = async () => {
+      try {
+        const res = await groupService.getGroups();
+        if (res && res.success) {
+          setGroups(res.data || []);
+        } else if (Array.isArray(res)) {
+          setGroups(res);
+        }
+      } catch (err) {
+        console.error('Error fetching groups:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchGroups();
+  }, []);
+
+  // Compute stats based on validation
+  const validExpenses = report.expenses.filter(exp => {
+    const groupExists = groups.some(g => g.id === exp.groupId);
+    const isAmountValid = typeof exp.amount === 'number' && exp.amount > 0;
+    return groupExists && isAmountValid;
+  });
+
+  const handleApprove = async () => {
+    if (validExpenses.length === 0) {
+      setError('There are no valid expenses to import. Please check your groups.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError('');
+
+    try {
+      const res = await importService.commitImport(validExpenses);
+      if (res.success) {
+        const skippedCount = report.expenses.length - validExpenses.length;
+        navigate('/import/summary', {
+          state: {
+            fileName: report.fileName,
+            totalRows: report.expenses.length,
+            importedCount: res.count,
+            flaggedCount: report.anomalyCount,
+            discardedCount: skippedCount,
+            correctedCount: 0,
+            anomalies: report.anomalies,
+            actions: [
+              `Successfully imported ${res.count} valid expenses.`,
+              ...(skippedCount > 0 ? [`Skipped ${skippedCount} rows that failed validation checks.`] : [])
+            ]
+          }
+        });
+      } else {
+        setError(res.error || 'Failed to import expenses.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || err.response?.data?.message || 'An error occurred during commit.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDiscard = () => {
@@ -60,21 +125,59 @@ export const ImportReport = () => {
           <div className="flex items-center gap-3">
             <button
               onClick={handleDiscard}
-              className="flex items-center gap-2 rounded-xl border border-slate-200 hover:bg-red-50 hover:border-red-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:text-red-650 dark:border-dark-800 dark:hover:bg-red-950/20 dark:hover:text-red-400 transition-all duration-200"
+              disabled={isSubmitting}
+              className="flex items-center gap-2 rounded-xl border border-slate-200 hover:bg-red-50 hover:border-red-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:text-red-650 dark:border-dark-800 dark:hover:bg-red-950/20 dark:hover:text-red-400 transition-all duration-200 disabled:opacity-50"
             >
               <Trash2 className="h-4 w-4" />
               Discard Batch
             </button>
             <button
               onClick={handleApprove}
-              className="flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/20 hover:bg-brand-500 transition-all duration-200"
+              disabled={isSubmitting || loading}
+              className="flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/20 hover:bg-brand-500 transition-all duration-200 disabled:opacity-50"
             >
-              <Check className="h-4 w-4" />
-              Approve and Import
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  Approve and Import ({validExpenses.length}/{report.expenses.length})
+                </>
+              )}
             </button>
           </div>
         </div>
       </div>
+
+      {report.anomalyCount > 0 && (
+        <div className="rounded-3xl border border-amber-250 bg-amber-50/20 dark:border-amber-900/30 dark:bg-amber-950/10 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-6 w-6 text-amber-550 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-bold text-slate-800 dark:text-dark-100">Potential Import Anomalies Detected</h4>
+              <p className="text-xs text-slate-550 mt-1 dark:text-dark-450 leading-relaxed">
+                We detected {report.anomalyCount} warnings (duplicates, missing payers, invalid dates, negative amounts, missing currencies, or group membership conflicts). You can review and resolve them before importing.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/import/anomalies', { state: fileData })}
+            className="rounded-2xl bg-amber-550 hover:bg-amber-600 text-white font-bold text-sm px-5 py-3 shadow-md hover:shadow-lg transition-all duration-200 shrink-0 self-start md:self-center active:scale-[0.98]"
+          >
+            Go to Anomaly Review
+          </button>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-650 flex items-center gap-2 dark:bg-red-950/20 dark:text-red-400 border border-red-200/40 animate-fade-in">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          {error}
+        </div>
+      )}
 
       {/* Metrics Row */}
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -163,18 +266,41 @@ export const ImportReport = () => {
                   <th className="pb-3 font-semibold">Description</th>
                   <th className="pb-3 font-semibold">Date</th>
                   <th className="pb-3 font-semibold">Group</th>
+                  <th className="pb-3 font-semibold">Status</th>
                   <th className="pb-3 font-semibold text-right">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-dark-850">
-                {report.expenses.map((exp, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-dark-850/20">
-                    <td className="py-4 font-semibold text-slate-850 dark:text-dark-100">{exp.description}</td>
-                    <td className="py-4 text-slate-450 dark:text-dark-450 text-xs">{exp.date}</td>
-                    <td className="py-4 text-slate-450 dark:text-dark-450 text-xs">{exp.groupId}</td>
-                    <td className="py-4 font-extrabold text-slate-900 dark:text-dark-50 text-right">${exp.amount.toFixed(2)}</td>
-                  </tr>
-                ))}
+                {report.expenses.map((exp, idx) => {
+                  const matchedGroup = groups.find(g => g.id === exp.groupId);
+                  const groupExists = !!matchedGroup;
+                  const isAmountValid = typeof exp.amount === 'number' && exp.amount > 0;
+                  const isValid = groupExists && isAmountValid;
+
+                  return (
+                    <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-dark-850/20">
+                      <td className="py-4 font-semibold text-slate-850 dark:text-dark-100">{exp.description}</td>
+                      <td className="py-4 text-slate-450 dark:text-dark-450 text-xs">{new Date(exp.date).toLocaleDateString()}</td>
+                      <td className="py-4 text-slate-450 dark:text-dark-450 text-xs font-semibold">
+                        {matchedGroup ? matchedGroup.name : exp.groupId}
+                      </td>
+                      <td className="py-4">
+                        {loading ? (
+                          <span className="text-slate-400 text-xs">Checking...</span>
+                        ) : isValid ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-750 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-250/20">
+                            <CheckCircle className="h-3 w-3" /> Valid
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-50 text-red-750 dark:bg-red-950/20 dark:text-red-400 border border-red-200/40">
+                            <AlertTriangle className="h-3 w-3" /> {!groupExists ? 'Missing Group' : 'Invalid Amount'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-4 font-extrabold text-slate-900 dark:text-dark-50 text-right">${exp.amount.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

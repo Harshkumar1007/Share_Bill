@@ -1,6 +1,11 @@
 import api from './api';
 
 export const expenseService = {
+  getAllExpenses: async () => {
+    const response = await api.get('/expenses');
+    return response.data;
+  },
+
   getExpenses: async (groupId) => {
     const response = await api.get(`/groups/${groupId}/expenses`);
     return response.data;
@@ -18,6 +23,11 @@ export const expenseService = {
 
   settleUp: async (groupId, settleData) => {
     const response = await api.post(`/groups/${groupId}/expenses/settle`, settleData);
+    return response.data;
+  },
+
+  deleteSettlement: async (groupId, id) => {
+    const response = await api.delete(`/groups/${groupId}/expenses/settlements/${id}`);
     return response.data;
   },
 };

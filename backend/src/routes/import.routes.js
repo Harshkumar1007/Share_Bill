@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { uploadAndAuditCSV, getReportHistory } from '../controllers/import.controller.js';
+import { uploadAndAuditCSV, getReportHistory, commitImportedExpenses } from '../controllers/import.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 
 // Setup multer in-memory storage configuration
@@ -25,6 +25,7 @@ const router = express.Router();
 router.use(protect); // Secure import endpoints
 
 router.post('/', upload.single('file'), uploadAndAuditCSV);
+router.post('/commit', commitImportedExpenses);
 router.get('/reports', getReportHistory);
 
 export default router;

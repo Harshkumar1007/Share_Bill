@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, FileSpreadsheet, X, AlertCircle } from 'lucide-react';
+import { importService } from '../services/import.service';
 
 export const ImportCSV = () => {
   const navigate = useNavigate();
@@ -60,40 +61,20 @@ export const ImportCSV = () => {
     setError('');
 
     try {
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      
-      // Navigate to reports view page passing the report simulation payload
-      navigate('/import/report', {
-        state: {
-          fileName: file.name,
-          fileSize: file.size,
-          report: {
+      const response = await importService.uploadCSV(file);
+      if (response.success && response.report) {
+        navigate('/import/report', {
+          state: {
             fileName: file.name,
-            totalProcessed: 8,
-            totalAmount: 1420.50,
-            anomalyCount: 2,
-            riskScore: 35,
-            anomalies: [
-              { description: 'Hotel Paris Luxury', type: 'OUTLIER', severity: 'HIGH', message: 'High amount detected ($1200.00). Please verify details.' },
-              { description: 'Bistro Lunch', type: 'POTENTIAL_DUPLICATE', severity: 'MEDIUM', message: 'Potential duplicate found with expense at index 4 ("Bistro Lunch" - $45.00) within 24 hours.' }
-            ],
-            parseErrors: [],
-            expenses: [
-              { description: 'Hotel Paris Luxury', amount: 1200.00, date: '2026-06-14', groupId: 'trip-1', paidById: 'user-1' },
-              { description: 'Bistro Lunch', amount: 45.00, date: '2026-06-13', groupId: 'trip-1', paidById: 'user-2' },
-              { description: 'Taxi cab', amount: 35.00, date: '2026-06-13', groupId: 'trip-1', paidById: 'user-1' },
-              { description: 'Bistro Lunch', amount: 45.00, date: '2026-06-13', groupId: 'trip-1', paidById: 'user-2' },
-              { description: 'Museum tickets', amount: 40.00, date: '2026-06-12', groupId: 'trip-1', paidById: 'user-1' },
-              { description: 'Groceries', amount: 25.50, date: '2026-06-11', groupId: 'trip-1', paidById: 'user-2' },
-              { description: 'Coffee & desserts', amount: 18.00, date: '2026-06-11', groupId: 'trip-1', paidById: 'user-1' },
-              { description: 'Souvenirs', amount: 17.00, date: '2026-06-10', groupId: 'trip-1', paidById: 'user-1' }
-            ]
+            fileSize: file.size,
+            report: response.report
           }
-        }
-      });
+        });
+      } else {
+        setError(response.message || 'Failed to parse CSV file.');
+      }
     } catch (err) {
-      setError('An error occurred during file import analysis.');
+      setError(err.response?.data?.error || err.response?.data?.message || 'An error occurred during file import analysis.');
     } finally {
       setLoading(false);
     }
