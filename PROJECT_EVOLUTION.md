@@ -4,6 +4,302 @@ This file tracks every architectural decision, feature addition, refactor, and A
 
 ---
 
+## Version 1.28.0
+
+2026-06-15
+
+## Prompt Given
+Create a CSV Import Preview & Duplicate Detection Engine.
+
+## Changes Made
+- Upgraded the backend CSV parser helper in [csvParser.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/csvParser.service.js) to support the new 9-column CSV format (`date,description,paid_by,amount,currency,split_type,split_with,split_details,notes`).
+- Added a Levenshtein distance similarity scoring helper to [csvParser.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/csvParser.service.js) to compare descriptions case-insensitively, stripping special characters.
+- Implemented `parseCSVForPreview(csvContent, groupMembers, existingExpenses)` with validations (date, description, amount, split type, paid_by, and split_with participant membership in group) and classification logic:
+  - `VALID`: correctly formatted rows with no duplicates.
+  - `DUPLICATE`: same date, amount, payer (user ID), and description exactly matching an existing database expense.
+  - `POSSIBLE_DUPLICATE`: same amount, same payer, and description similarity score > 85%.
+  - `INVALID`: missing/incorrect fields or non-member names.
+- Updated the `importPreview` controller in [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js) to validate group existence, load active group members and all existing expenses, run the updated preview validation engine, log a `CSV_PREVIEWED` activity audit trail, and clean up temporary uploaded files.
+- Redesigned the frontend [ImportCSV.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportCSV.jsx):
+  - Added a dropdown selector to choose a Group before processing files.
+  - Rendered a 5-column metric summary dashboard (Total, Valid, Possible Duplicates, Exact Duplicates, Invalid).
+  - Replaced multiple split tables with a single unified, sorted table tracking Row Number, Description, Amount, Paid By, Status, and Reason/Inline Errors.
+- Expanded the client service wrapper `previewImport` in [import.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/import.service.js) to pass the selected group ID alongside the multipart file payload.
+
+## Files Added
+None
+
+## Files Modified
+- [csvParser.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/csvParser.service.js)
+- [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js)
+- [import.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/import.service.js)
+- [ImportCSV.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportCSV.jsx)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+## Reason For Change
+- Fulfill requirements to build an advanced duplicate detection engine that cross-references uploaded spreadsheets with database records, highlights similar descriptions via Levenshtein scores, and renders a unified review table.
+
+## Impact On Project
+- Eliminates duplicate entries and enhances user control during bulk spreadsheet imports by showing status details and inline errors.
+
+---
+
+## Version 1.27.0
+
+2026-06-15
+
+## Prompt Given
+Integrate CSV imports with Activity Log.
+
+When CSV import completes:
+- Create activity entry
+- Store:
+  imported rows count
+  group name
+  imported by user
+  timestamp
+
+## Changes Made
+- Integrated the database-connected CSV import API with the local Activity Log dispatcher inside [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js):
+  - Configured the `logActivity` invocation parameters to pass a detailed metadata structure.
+  - Mapped specific transaction elements inside the log details payload:
+    - `importedRowsCount`: Total valid expense rows successfully saved.
+    - `groupName`: Name of the group target.
+    - `importedByUser`: Name of the authenticated operator importing files.
+    - `timestamp`: Date-time check string recorded on final commit completion.
+
+## Files Added
+None
+
+## Files Modified
+- [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+## Reason For Change
+- Fulfill requirements to record clear audits of bulk spreadsheet imports, capturing users, sizes, groups, and timings securely.
+
+## Impact On Project
+- Enhances tracking by populating activity streams with structured metadata, verifying the size of uploads and identifying who executed the uploads.
+
+---
+
+## Version 1.26.0
+
+2026-06-15
+
+## Prompt Given
+Create Final Import API.
+
+Requirements:
+- Save validated CSV rows as expenses
+- Associate expenses with selected group
+- Create expense splits automatically
+- Skip invalid rows
+- Return import summary
+
+Response:
+- imported count
+- skipped count
+- error list
+
+## Changes Made
+- Modified the `importCSV` controller in [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js) to implement the database persistence engine:
+  - Fetches the targeted `groupId` from `req.body` and verifies the group and its active members exist.
+  - Processes valid CSV rows inside a database transaction block (`prisma.$transaction`):
+    - Dynamically resolves payer identities (`paidBy` column) by matching database emails or names, falling back to the authenticated user ID.
+    - Divides expense amounts equally across all active group members, handling rounding differences.
+    - Saves the `Expense` record and executes a bulk `createMany` query to save split details.
+  - Skips and tracks invalid rows (either from initial syntax checks or database errors), incrementing `skippedCount` and appending error summaries.
+  - Deletes uploaded files inside a `finally` block to keep storage clear.
+  - Logs a `CSV_IMPORTED` audit trail in the activities ledgers.
+  - Returns: `{ success: true, importedCount, skippedCount, errors }`.
+
+## Files Added
+None
+
+## Files Modified
+- [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+## Reason For Change
+- Complete the end-to-end bulk expense import workflow by persisting valid records, auto-allocating splits, skipping formatting errors, and returning detailed logs.
+
+## Impact On Project
+- Users can import multiple expenses in a single upload, resolving payer IDs and splitting debts equally among group members.
+
+---
+
+## Version 1.25.0
+
+2026-06-15
+
+## Prompt Given
+Create CSV Import page.
+
+Features:
+- Drag and drop upload area
+- File picker
+- Upload CSV
+- Call preview API
+- Show preview table
+- Show validation errors
+
+Use Tailwind UI.
+
+## Changes Made
+- Rewrote the CSV import page [ImportCSV.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportCSV.jsx) to display inline upload previews:
+  - Drag and drop zone supporting drop actions and `.csv` extensions, and a standard file picker with validation messages.
+  - Integration with `importService.previewImport` (calling the new `POST /api/expenses/import/preview` API endpoint).
+  - Summary metrics display cards (Total Rows, Valid Rows, Invalid Rows) styled with glassmorphic cards and dynamic icons.
+  - Interactive table of valid records showing Row Number, Description, Amount, Paid By, and Date.
+  - Alert warnings and auditing section for invalid records detailing row numbers, raw line previews, and individual validation error badges.
+  - Inline reset action button to clear the preview and upload another file.
+- Added mapping for `previewImport` in the frontend client [import.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/import.service.js) pointing to the `/expenses/import/preview` backend route.
+
+## Files Added
+None
+
+## Files Modified
+- [ImportCSV.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportCSV.jsx)
+- [import.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/import.service.js)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+## Reason For Change
+- Fulfill requirements to build an interactive CSV validation dashboard for users, highlighting spreadsheet cell errors early before any records are committed.
+
+## Impact On Project
+- Enhances user experience by visualizing bulk billing uploads inline, displaying formatting errors clearly, and eliminating blind database insert transactions.
+
+---
+
+## Version 1.24.0
+
+2026-06-15
+
+## Prompt Given
+Create Import Preview API.
+
+Requirements:
+- Preview parsed CSV data
+- Show:
+  total rows
+  valid rows
+  invalid rows
+  validation errors
+- Do not save data to database
+
+Response should be suitable for frontend preview screen.
+
+## Changes Made
+- Implemented and exported the `importPreview` controller function in [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js):
+  - Parses uploaded CSV content using the reusable parsing service.
+  - Extracts validation metadata and maps parsed entries into separate `validRows` and `invalidRows` arrays (containing detailed error lists for bad formats).
+  - Returns a summary metrics payload: `{ totalRows, validCount, invalidCount }`.
+  - Integrates disk cleanup inside a `finally` block to remove files synchronously from the `./uploads` directory.
+  - Excludes database persistence operations (ensuring it is a pure-preview action).
+- Registered the endpoint `POST /api/expenses/import/preview` inside [globalExpense.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/globalExpense.routes.js), mapping it to JWT authentication and Multer file upload handlers.
+
+## Files Added
+None
+
+## Files Modified
+- [globalExpense.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/globalExpense.routes.js)
+- [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+## Reason For Change
+- Fulfill requirements to supply frontend clients with structured layout previews of spreadsheet contents, highlighting row errors before final commit database transactions are executed.
+
+## Impact On Project
+- Enables the UI to display import validation errors on specific cells or rows, allowing users to make adjustments before submission.
+
+---
+
+## Version 1.23.0
+
+2026-06-15
+
+## Prompt Given
+Create CSV Import API.
+
+Requirements:
+- POST /api/expenses/import
+- Accept CSV file upload
+- Use Multer for file uploads
+- Store file in temporary uploads folder
+- Validate file type (.csv only)
+- Return parsed rows count
+
+Do not create expenses yet.
+Only upload and parse CSV.
+
+## Changes Made
+- Configured local Multer storage inside [globalExpense.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/globalExpense.routes.js):
+  - Setup disk destination mapping to a project-level temporary `./uploads` directory.
+  - Defined strict file type filter rejecting any files without a `.csv` extension with a 400 Bad Request error.
+- Exposed the route `POST /api/expenses/import` secured by JWT authentication middleware (`protect`).
+- Implemented and exported the `importCSV` controller in [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js):
+  - Reads the uploaded file content asynchronously.
+  - Passes raw CSV strings to `csvParser.service.js` to extract JSON row collections.
+  - Sums the counts of valid and invalid rows to determine the `parsedRowsCount`.
+  - Integrates disk storage cleanup via `fs.unlinkSync` inside a `finally` block, ensuring temporary upload files are completely removed from disk under all success or failure outcomes.
+
+## Files Added
+None
+
+## Files Modified
+- [globalExpense.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/globalExpense.routes.js)
+- [expense.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/expense.controller.js)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+## Reason For Change
+- Fulfill requirements to expose a secure and sandboxed CSV parsing endpoint, validate formats, and manage server disk limits.
+
+## Impact On Project
+- Empowers user client interfaces to preview raw counts and check column compatibility of bulk spreadsheets before initiating database creation transactions.
+
+---
+
+## Version 1.22.0
+
+2026-06-15
+
+## Prompt Given
+Create CSV parsing service.
+
+Requirements:
+- Read uploaded CSV file
+- Convert rows into JSON
+- Validate required columns:
+  description
+  amount
+  paidBy
+  date
+- Return valid rows and invalid rows separately
+
+Create reusable service layer.
+
+## Changes Made
+- Created a new reusable CSV parsing service [csvParser.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/csvParser.service.js) offering:
+  - Header column presence checking for required fields: `description`, `amount`, `paidBy`, and `date`.
+  - Quoted string CSV cell parsing support to prevent strings containing commas from breaking column alignment.
+  - Formatting and boundary validation checks: non-empty descriptions, positive numeric amounts, non-empty paidBy strings, and standard valid dates.
+  - Row separation returning arrays of valid JSON records and invalid records (each with specific row numbers and lists of validation errors).
+
+## Files Added
+- [csvParser.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/csvParser.service.js)
+
+## Files Modified
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+## Reason For Change
+- Introduce a robust and reusable parser utility in the service layer to process raw CSV expense uploads, validate records early, and categorize formatting anomalies clearly.
+
+## Impact On Project
+- Implements a generic CSV import engine that can be easily plugged into Express endpoints or file-processing routes, returning fine-grained validation logs.
+
+---
+
 ## Version 1.21.0
 
 2026-06-15

@@ -1,5 +1,7 @@
+import fs from 'fs';
 import prisma from '../services/prisma.service.js';
 import { logActivity } from '../services/activity.service.js';
+import { parseCSVData, parseCSVForPreview } from '../services/csvParser.service.js';
 
 // @desc    Create a new expense with splits
 // @route   POST /api/groups/:groupId/expenses
@@ -448,5 +450,277 @@ export const deleteSettlement = async (req, res, next) => {
     }
   } catch (error) {
     next(error);
+  }
+};
+
+// @desc    Import expenses from CSV (Saves valid rows, creates splits, skips invalid)
+// @route   POST /api/expenses/import
+// @access  Private
+export const importCSV = async (req, res, next) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: 'No file uploaded. Please upload a CSV file.' });
+  }
+
+  const { groupId } = req.body;
+  const filePath = req.file.path;
+
+  if (!groupId) {
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (e) {}
+    return res.status(400).json({ success: false, error: 'Group ID is required.' });
+  }
+
+  try {
+    const csvContent = fs.readFileSync(filePath, 'utf-8');
+    const { valid, invalid } = parseCSVData(csvContent);
+
+    // Verify group exists
+    const group = await prisma.group.findUnique({
+      where: { id: groupId }
+    });
+    if (!group) {
+      return res.status(400).json({ success: false, error: 'Selected group not found.' });
+    }
+
+    // Get active group members to divide splits
+    const members = await prisma.groupMember.findMany({
+      where: { groupId, leftAt: null }
+    });
+    if (members.length === 0) {
+      return res.status(400).json({ success: false, error: 'Selected group has no active members to split expenses.' });
+    }
+
+    const errorList = invalid.map(row => ({
+      rowNumber: row.rowNumber,
+      rawRow: row.rawRow,
+      messages: row.errors
+    }));
+
+    let importedCount = 0;
+    let skippedCount = invalid.length;
+
+    // Execute in a transaction to safely write valid records
+    await prisma.$transaction(async (tx) => {
+      for (const row of valid) {
+        try {
+          const { description, amount, paidBy, date } = row;
+
+          // Resolve payer ID matching email or name (fall back to authenticated user)
+          let paidById = req.user.id;
+          if (paidBy) {
+            const matchedUser = await tx.user.findFirst({
+              where: {
+                OR: [
+                  { email: { equals: paidBy, mode: 'insensitive' } },
+                  { name: { equals: paidBy, mode: 'insensitive' } }
+                ]
+              }
+            });
+            if (matchedUser) {
+              const isMember = await tx.groupMember.findFirst({
+                where: { groupId, userId: matchedUser.id }
+              });
+              if (isMember) {
+                paidById = matchedUser.id;
+              }
+            }
+          }
+
+          // Calculate equal splits
+          const N = members.length;
+          const baseSplit = Math.floor((amount / N) * 100) / 100;
+          let remaining = Math.round((amount - baseSplit * N) * 100) / 100;
+
+          const computedSplits = members.map((m, idx) => {
+            let splitAmt = baseSplit;
+            if (idx < Math.round(remaining * 100)) {
+              splitAmt += 0.01;
+            }
+            return {
+              userId: m.userId,
+              amount: splitAmt
+            };
+          });
+
+          // Write the expense
+          const createdExpense = await tx.expense.create({
+            data: {
+              description,
+              amount,
+              currency: 'USD',
+              date: date ? new Date(date) : new Date(),
+              groupId,
+              paidById,
+              splitType: 'EQUAL'
+            }
+          });
+
+          // Write splits
+          const splitData = computedSplits.map(s => ({
+            expenseId: createdExpense.id,
+            userId: s.userId,
+            amount: s.amount
+          }));
+
+          await tx.expenseSplit.createMany({
+            data: splitData
+          });
+
+          importedCount++;
+        } catch (rowError) {
+          skippedCount++;
+          errorList.push({
+            rowNumber: row.rowNumber,
+            rawRow: row.rawRow,
+            messages: [rowError.message || 'Failed to save expense row.']
+          });
+        }
+      }
+    });
+
+    // Log the CSV Import action
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { name: true }
+      });
+      await logActivity({
+        type: 'CSV_IMPORTED',
+        userId: req.user.id,
+        userName: user?.name,
+        groupId,
+        groupName: group.name,
+        message: `${user?.name || 'Someone'} imported ${importedCount} expenses from CSV in group "${group.name}"`,
+        details: {
+          importedRowsCount: importedCount,
+          groupName: group.name,
+          importedByUser: user?.name || 'System User',
+          timestamp: new Date().toISOString()
+        }
+      });
+    } catch (logError) {
+      console.error('Failed to log CSV import activity:', logError);
+    }
+
+    res.status(200).json({
+      success: true,
+      importedCount,
+      skippedCount,
+      errors: errorList
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  } finally {
+    // Safely remove the temporary file from the uploads directory
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (err) {
+      console.error(`Failed to delete temporary file ${filePath}:`, err.message);
+    }
+  }
+};
+
+// @desc    Preview uploaded CSV expenses (Does not save to database)
+// @route   POST /api/expenses/import/preview
+// @access  Private
+export const importPreview = async (req, res, next) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: 'No file uploaded. Please upload a CSV file.' });
+  }
+
+  const { groupId } = req.body;
+  const filePath = req.file.path;
+
+  if (!groupId) {
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (e) {}
+    return res.status(400).json({ success: false, error: 'Group ID is required' });
+  }
+
+  try {
+    const group = await prisma.group.findUnique({
+      where: { id: groupId }
+    });
+    if (!group) {
+      return res.status(400).json({ success: false, error: 'Selected group not found.' });
+    }
+
+    const groupMembers = await prisma.groupMember.findMany({
+      where: { groupId, leftAt: null },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    const existingExpenses = await prisma.expense.findMany({
+      where: { groupId }
+    });
+
+    const csvContent = fs.readFileSync(filePath, 'utf-8');
+    const result = parseCSVForPreview(csvContent, groupMembers, existingExpenses);
+
+    // Log activity
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { name: true }
+      });
+      await logActivity({
+        type: 'CSV_PREVIEWED',
+        userId: req.user.id,
+        userName: user?.name,
+        groupId,
+        groupName: group.name,
+        message: `${user?.name || 'Someone'} previewed CSV import with ${result.summary.validCount} valid rows in group "${group.name}"`,
+        details: {
+          totalRows: result.summary.totalRows,
+          validCount: result.summary.validCount,
+          duplicateCount: result.summary.duplicateCount,
+          suspiciousCount: result.summary.suspiciousCount,
+          invalidCount: result.summary.invalidCount,
+          groupName: group.name,
+          previewedByUser: user?.name || 'System User',
+          timestamp: new Date().toISOString()
+        }
+      });
+    } catch (logError) {
+      console.error('Failed to log CSV preview activity:', logError);
+    }
+
+    res.status(200).json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  } finally {
+    // Safely remove the temporary file from the uploads directory
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (err) {
+      console.error(`Failed to delete temporary file ${filePath}:`, err.message);
+    }
   }
 };

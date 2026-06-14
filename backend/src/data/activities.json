@@ -1,5 +1,18 @@
 [
   {
+    "id": "kkaeex5",
+    "type": "CSV_IMPORTED",
+    "userId": "user-logged-in",
+    "userName": "System User",
+    "groupId": "group-1",
+    "groupName": "Test Group",
+    "message": "Someone imported 2 expenses from CSV in group \"Test Group\"",
+    "timestamp": "2026-06-14T21:03:56.577Z",
+    "details": {
+      "count": 2
+    }
+  },
+  {
     "id": "umokcnc",
     "type": "SETTLEMENT_ADDED",
     "userId": "01b3d86c-7245-4890-a387-d114d1241751",
