@@ -4,6 +4,51 @@ This file tracks every architectural decision, feature addition, refactor, and A
 
 ---
 
+## Version 1.21.0
+
+2026-06-15
+
+## Prompt Given
+Prepare the backend for Render deployment and fix all Render compatibility issues.
+
+Current Issue:
+Render build fails with:
+"sh: 1: prisma: Permission denied"
+
+Tasks:
+1. Review package.json and update scripts for Render best practices.
+   - Keep "start" focused on starting the server only.
+   - Do not run migrations inside package.json start script.
+   - Ensure Prisma commands work correctly in Linux environments.
+2. Make the backend fully compatible with Render, Prisma, PostgreSQL (Neon).
+3. Add Node.js version configuration: Use Node.js 20 LTS, add appropriate engines configuration.
+4. Verify Prisma CLI installation, @prisma/client installation, Prisma generate execution, Prisma migrate deploy execution.
+5. Generate deployment-ready configuration (Build Command, Start Command, Environment Variables).
+6. Update DEPLOYMENT.md, PROJECT_EVOLUTION.md.
+
+## Changes Made
+- Updated [package.json](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/package.json) scripts:
+  - Changed the `"build"` script to `"npx prisma generate"` which runs the Prisma compilation using `npx`, bypassing the shebang permission wrapper issue in Linux environments (`sh: 1: prisma: Permission denied`).
+  - Restored the `"start"` script to start-only behavior (`"node src/server.js"`) as requested.
+- Confirmed the Node.js 20 engines configuration (`"engines": { "node": "20.x" }`) is correctly set in `package.json`.
+- Rewrote [DEPLOYMENT.md](file:///c:/Users/ASUS/Desktop/Share_Bill/DEPLOYMENT.md) to provide targeted Render configuration guides, listing the recommended build command (`npm install && npm run build`), the start command (`npx prisma migrate deploy && npm start`), required environment variables, and verification checklists.
+
+## Files Added
+None
+
+## Files Modified
+- [package.json](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/package.json)
+- [DEPLOYMENT.md](file:///c:/Users/ASUS/Desktop/Share_Bill/DEPLOYMENT.md)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+## Reason For Change
+- Resolve permission bugs on Linux containers, satisfy separation of concerns between build and startup tasks, and configure runtime versioning.
+
+## Impact On Project
+- Eliminates Render deployment blockages, standardizes build configurations, and provides production-ready deployment scripts.
+
+---
+
 ## Version 1.20.0
 
 2026-06-15
