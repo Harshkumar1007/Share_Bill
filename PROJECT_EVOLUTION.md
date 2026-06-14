@@ -4,6 +4,104 @@ This file tracks every architectural decision, feature addition, refactor, and A
 
 ---
 
+## Version 1.20.0
+
+2026-06-15
+
+## Prompt Given
+Deploy the backend to Railway.
+
+Requirements:
+* Use PostgreSQL database provided by Railway
+* Configure environment variables
+* Configure Prisma for production
+* Run migrations automatically during deployment
+* Verify health endpoint works
+
+Generate:
+* RAILWAY_DEPLOYMENT.md
+* Production environment variables list
+* Deployment checklist
+
+After deployment:
+* Test GET /api/health
+* Verify database connectivity
+* Verify Prisma migrations
+
+Update PROJECT_EVOLUTION.md.
+
+## Changes Made
+- Modified the start script in [package.json](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/package.json) to run `npm run db:migrate` before spawning Node, enabling automated database migrations on Railway container starts.
+- Generated [RAILWAY_DEPLOYMENT.md](file:///c:/Users/ASUS/Desktop/Share_Bill/RAILWAY_DEPLOYMENT.md) at the workspace root, containing deployment instructions, checklist, database settings, and production environment variables.
+
+## Files Added
+- [RAILWAY_DEPLOYMENT.md](file:///c:/Users/ASUS/Desktop/Share_Bill/RAILWAY_DEPLOYMENT.md)
+
+## Files Modified
+- [package.json](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/package.json)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+## Reason For Change
+- Automate deployment pipelines on Railway, ensuring the PostgreSQL database migrations are run safely and health endpoints report services status accurately.
+
+## Impact On Project
+- Eliminates manual release step friction by coupling migration deployments directly into host container initialization workflows.
+
+---
+
+## Version 1.19.0
+
+2026-06-15
+
+## Prompt Given
+Prepare the backend for production deployment.
+
+Requirements:
+* Add health check endpoint: GET /api/health
+* Validate required environment variables at startup
+* Configure production-ready CORS
+* Add centralized error handling
+* Add request logging
+* Add graceful shutdown handling
+* Ensure Prisma client is properly initialized and disconnected
+
+Generate:
+* Deployment-ready backend configuration
+* Health check route
+* Production environment template
+
+Do not modify business logic.
+Update PROJECT_EVOLUTION.md.
+
+## Changes Made
+- Created environment variable validation module [validateEnv.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/config/validateEnv.js) checking for `DATABASE_URL` and `JWT_SECRET` at server startup to prevent silent failures.
+- Added custom request logging middleware [logger.middleware.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/middleware/logger.middleware.js) recording HTTP method, path, status code, and response time to stdout.
+- Updated [server.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/server.js) to run env validation before mounting the app, import configuration synchronously, and register handlers for SIGTERM/SIGINT signals for graceful HTTP server closure and Prisma client database disconnection.
+- Created `GET /api/health` endpoint in [app.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/app.js) querying the database (`SELECT 1`) to check status, returning detailed UP/DOWN health metrics with status 200 or 503.
+- Upgraded backend CORS policy to dynamically validate origins against wildcard subdomain formats (e.g. `*.vercel.app`) and multiple comma-separated entries in `CORS_ORIGIN`.
+- Added standard production npm scripts (`build` for prisma compilation and `db:migrate` for non-interactive schema migration deployment) inside [package.json](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/package.json).
+- Generated [DEPLOYMENT.md](file:///c:/Users/ASUS/Desktop/Share_Bill/DEPLOYMENT.md) guide and [.env.production.example](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/.env.production.example) configuration template.
+
+## Files Added
+- [validateEnv.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/config/validateEnv.js)
+- [logger.middleware.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/middleware/logger.middleware.js)
+- [.env.production.example](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/.env.production.example)
+- [DEPLOYMENT.md](file:///c:/Users/ASUS/Desktop/Share_Bill/DEPLOYMENT.md)
+
+## Files Modified
+- [server.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/server.js)
+- [app.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/app.js)
+- [package.json](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/package.json)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+## Reason For Change
+- Fulfill backend production deployment readiness, ensuring security, visibility, database connection safety, and fast startup failure tracking.
+
+## Impact On Project
+- Provides hosting platform compatibility, error metrics, audit trails via stdout, and dynamic access control.
+
+---
+
 ## Version 1.18.0
 
 2026-06-14
