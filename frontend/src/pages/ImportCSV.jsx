@@ -532,24 +532,28 @@ export const ImportCSV = () => {
 
   // Live calculation of preview stats
   const getPreviewSummary = () => {
-    const activeRows = resolvedRows.filter(r => !r.rejected);
+    const activeRows = resolvedRows.filter(r => !r.rejected && r.record);
     
     // Guest creation estimation
     const uniqueGuests = new Set();
     activeRows.forEach(r => {
       // Check payer
-      const payerName = r.record.paidBy;
-      const matchedPayer = groupMembers.find(m => m.name.toLowerCase() === payerName.toLowerCase());
-      if (!matchedPayer && payerName) {
-        uniqueGuests.add(payerName.trim());
+      const payerName = r.record?.paidBy;
+      if (payerName && typeof payerName === 'string') {
+        const matchedPayer = groupMembers.find(m => m && m.name && m.name.toLowerCase() === payerName.toLowerCase());
+        if (!matchedPayer) {
+          uniqueGuests.add(payerName.trim());
+        }
       }
 
       // Check splitWith members
-      const splitWithList = r.record.splitWith ? r.record.splitWith.split(/[规律;,]/).map(s => s.trim()).filter(s => s !== '') : [];
+      const splitWithList = r.record?.splitWith ? r.record.splitWith.split(/[规律;,]/).map(s => s.trim()).filter(s => s !== '') : [];
       splitWithList.forEach(name => {
-        const matched = groupMembers.find(m => m.name.toLowerCase() === name.toLowerCase());
-        if (!matched && name) {
-          uniqueGuests.add(name);
+        if (name && typeof name === 'string') {
+          const matched = groupMembers.find(m => m && m.name && m.name.toLowerCase() === name.toLowerCase());
+          if (!matched) {
+            uniqueGuests.add(name);
+          }
         }
       });
     });
@@ -1047,7 +1051,7 @@ export const ImportCSV = () => {
                                     className="rounded-lg border-slate-350 text-xs bg-white py-1 px-2.5 text-slate-800 focus:outline-none dark:bg-dark-950 dark:border-dark-700 dark:text-dark-100"
                                   >
                                     <option value="">-- Re-map Payer --</option>
-                                    {groupMembers.map(m => (
+                                    {groupMembers.filter(m => m && m.name).map(m => (
                                       <option key={m.id} value={m.name}>{m.name}</option>
                                     ))}
                                   </select>
@@ -1309,7 +1313,7 @@ export const ImportCSV = () => {
                     required
                   />
                   <datalist id="group-members-list">
-                    {groupMembers.map(m => <option key={m.id} value={m.name} />)}
+                    {groupMembers.filter(m => m && m.name).map(m => <option key={m.id} value={m.name} />)}
                   </datalist>
                 </div>
               </div>
