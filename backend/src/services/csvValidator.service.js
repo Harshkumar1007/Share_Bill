@@ -425,8 +425,12 @@ export const validateCSVRow = (rowFields, headerMap, groupMembers, existingExpen
 
   // 10. Member Lifecycle bounds validation
   const expenseDate = new Date(cleanDate);
+  const checkedMemberIds = new Set();
   const checkLifecycleMember = (memberObj, name) => {
     if (memberObj) {
+      if (checkedMemberIds.has(memberObj.id)) return;
+      checkedMemberIds.add(memberObj.id);
+
       const joinDate = new Date(memberObj.joinedAt);
       if (expenseDate < joinDate) {
         issues.push({

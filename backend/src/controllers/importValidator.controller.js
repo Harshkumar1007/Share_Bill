@@ -220,7 +220,7 @@ export const commitCleanImport = async (req, res, next) => {
 
         if (convertToSettlement) {
           settlementsCount++;
-          const splitWithList = splitWith.split(/[规律;,]/).map(s => s.trim()).filter(s => s !== '');
+          const splitWithList = splitWith.split(/[;,]/).map(s => s.trim()).filter(s => s !== '');
           const toName = splitWithList[0] || 'Unknown';
           const toUserId = await getOrCreateUser(toName);
 
@@ -247,7 +247,7 @@ export const commitCleanImport = async (req, res, next) => {
           } catch (e) {}
         } else {
           // Normal expense
-          const splitWithList = splitWith.split(/[规律;,]/).map(s => s.trim()).filter(s => s !== '');
+          const splitWithList = splitWith.split(/[;,]/).map(s => s.trim()).filter(s => s !== '');
           const splitWithIds = [];
           for (const name of splitWithList) {
             const id = await getOrCreateUser(name);
