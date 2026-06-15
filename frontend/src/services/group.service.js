@@ -16,8 +16,8 @@ export const groupService = {
     return response.data;
   },
 
-  addMember: async (groupId, email) => {
-    const response = await api.post(`/groups/${groupId}/members`, { email });
+  addMember: async (groupId, email, name) => {
+    const response = await api.post(`/groups/${groupId}/members`, { email, name });
     return response.data;
   },
 

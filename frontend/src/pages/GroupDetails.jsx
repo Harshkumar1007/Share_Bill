@@ -101,11 +101,13 @@ export const GroupDetails = () => {
   // Member CRUD handlers
   const handleAddMemberSubmit = async (e) => {
     e.preventDefault();
-    if (!newMemEmail.trim()) return;
+    const cleanName = newMemName.trim();
+    const cleanEmail = newMemEmail.trim();
+    if (!cleanName && !cleanEmail) return;
 
     try {
       setLoading(true);
-      await groupService.addMember(id, newMemEmail.trim().toLowerCase());
+      await groupService.addMember(id, cleanEmail || null, cleanName || null);
       setNewMemName('');
       setNewMemEmail('');
       setShowAddMember(false);
@@ -707,19 +709,17 @@ export const GroupDetails = () => {
                   className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-800 dark:bg-dark-950 dark:text-dark-50"
                   value={newMemName}
                   onChange={(e) => setNewMemName(e.target.value)}
-                  required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Email Address</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Email Address (Optional)</label>
                 <input
                   type="email"
                   placeholder="e.g. david@example.com"
                   className="w-full rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 focus:border-brand-500 focus:outline-none dark:border-dark-800 dark:bg-dark-950 dark:text-dark-50"
                   value={newMemEmail}
                   onChange={(e) => setNewMemEmail(e.target.value)}
-                  required
                 />
               </div>
 

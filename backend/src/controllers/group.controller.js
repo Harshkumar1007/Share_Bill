@@ -257,10 +257,10 @@ export const deleteGroup = async (req, res, next) => {
 export const addMember = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { email } = req.body;
+    const { email, name } = req.body;
 
-    if (!email) {
-      return res.status(400).json({ success: false, error: 'Member email is required' });
+    if (!email && !name) {
+      return res.status(400).json({ success: false, error: 'Member name or email is required' });
     }
 
     const group = await prisma.group.findUnique({ where: { id } });
@@ -268,12 +268,38 @@ export const addMember = async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Group not found' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() }
-    });
+    let user = null;
 
-    if (!user) {
-      return res.status(404).json({ success: false, error: 'User email not registered. Invite them first.' });
+    if (email) {
+      user = await prisma.user.findUnique({
+        where: { email: email.toLowerCase() }
+      });
+
+      if (!user) {
+        if (name) {
+          // If they provided both email and name, but email is not registered, create profile.
+          user = await prisma.user.create({
+            data: {
+              name,
+              email: email.toLowerCase(),
+              password: `guest_pwd_${Math.random()}`
+            }
+          });
+        } else {
+          return res.status(404).json({ success: false, error: 'User email not registered. Please provide their name to create a profile.' });
+        }
+      }
+    } else if (name) {
+      // No email provided, only name! Create a guest profile.
+      const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const uniqueEmail = `guest-${cleanName}-${Date.now()}-${Math.round(Math.random() * 1000)}@guest.sharebill.com`;
+      user = await prisma.user.create({
+        data: {
+          name,
+          email: uniqueEmail,
+          password: `guest_pwd_${Math.random()}`
+        }
+      });
     }
 
     // Check existing link
