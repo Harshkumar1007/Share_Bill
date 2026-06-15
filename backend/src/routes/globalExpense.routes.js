@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { getAllUserExpenses, importCSV, importPreview } from '../controllers/expense.controller.js';
+import { validateImportCSV, commitCleanImport } from '../controllers/importValidator.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 
 // Ensure uploads folder exists in the project workspace
@@ -49,5 +50,11 @@ router.post('/import', upload.single('file'), importCSV);
 
 // CSV Import Preview API (Accepts CSV, parses and returns full valid/invalid JSON preview rows, cleans up disk, doesn't persist to database)
 router.post('/import/preview', upload.single('file'), importPreview);
+
+// CSV Import Validation with issues, duplicate detection, and AI analysis
+router.post('/import/validate', upload.single('file'), validateImportCSV);
+
+// Commit cleaned CSV import data (guest creations, conversions to settlements, resolving duplicates, splits calculation)
+router.post('/import/commit-clean', commitCleanImport);
 
 export default router;

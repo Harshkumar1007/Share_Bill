@@ -19,6 +19,7 @@ import ImportReport from '../pages/ImportReport';
 import AnomalyReview from '../pages/AnomalyReview';
 import ImportSummaryReport from '../pages/ImportSummaryReport';
 import ActivityLog from '../pages/ActivityLog';
+import { AIAssistant } from '../pages/AIAssistant';
 import NotFound from '../pages/NotFound';
 
 export const AppRoutes = () => {
@@ -42,6 +43,7 @@ export const AppRoutes = () => {
           <Route path="/import/anomalies" element={<AnomalyReview />} />
           <Route path="/import/summary" element={<ImportSummaryReport />} />
           <Route path="/activities" element={<ActivityLog />} />
+          <Route path="/ai-assistant" element={<AIAssistant />} />
         </Route>
       </Route>
 

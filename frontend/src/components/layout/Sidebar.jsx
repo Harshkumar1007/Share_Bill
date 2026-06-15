@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Receipt, CreditCard, FileSpreadsheet, Activity } from 'lucide-react';
+import { LayoutDashboard, Users, Receipt, CreditCard, FileSpreadsheet, Activity, Brain } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
   const navItems = [
@@ -8,6 +8,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { name: 'Groups', path: '/groups', icon: Users },
     { name: 'Expenses', path: '/expenses', icon: Receipt },
     { name: 'CSV Import', path: '/import', icon: FileSpreadsheet },
+    { name: 'AI Assistant', path: '/ai-assistant', icon: Brain },
     { name: 'Activity Log', path: '/activities', icon: Activity },
   ];
 

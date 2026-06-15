@@ -4,6 +4,92 @@ This file tracks every architectural decision, feature addition, refactor, and A
 
 ---
 
+## Version 1.30.0
+
+2026-06-15
+
+## Prompt Given
+Implement a Production-Grade CSV Import Validation & Resolution Engine.
+
+## Changes Made
+- Developed backend CSV validation engine [csvValidator.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/csvValidator.service.js) and [importValidator.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/importValidator.controller.js) with rules, severities, lifecycles, and conversions.
+- Implemented AI import intelligence layer [aiImportAnalysis.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiImportAnalysis.service.js) summarizing import totals, duplicate patterns, financial anomalies, and category metrics.
+- Mounted route mappings `/api/expenses/import/validate` and `/api/expenses/import/commit-clean` inside [globalExpense.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/globalExpense.routes.js).
+- Updated React import services [import.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/import.service.js).
+- Built high-fidelity interactive review dashboard page [ImportCSV.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportCSV.jsx) featuring tabs for Warnings, Review Required, Auto-fixed, and Rejected rows with options for duplicate resolution, date format ambiguity resolution, payer mapping dropdowns, and conversion of expense settlements.
+
+## Files Added
+- [aiImportAnalysis.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiImportAnalysis.service.js)
+
+## Files Modified
+- [globalExpense.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/globalExpense.routes.js)
+- [import.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/import.service.js)
+- [ImportCSV.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportCSV.jsx)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+## Validation Rules & Engine Specifications
+- **Severity Levels**:
+  - **CRITICAL**: Rejects row. E.g. Zero Amount, Split Percentage not 100%, Missing Required Fields (date, description, amount, paid_by), Invalid Split Types.
+  - **REVIEW_REQUIRED**: User must intervene. E.g. Missing Payer, Settlement Detected as Expense, Ambiguous Date formats, Equal Split Conflicts.
+  - **WARNING**: Informational issues. E.g. Duplicate Expenses, Unknown Members, Negative Amount (Treat as Refund), Missing Currency, Multiple Currencies, Date Normalizations, Member Lifecycle violations.
+- **Resolution Policies**:
+  - **Duplicate Policy**: Choose Keep Existing (skips import), Import New, or Keep Both.
+  - **Name Normalization**: Case-insensitive names are auto-corrected and logged.
+  - **Guest Member Handling**: Auto-create user profiles with unique domain email wrappers when non-members are imported.
+  - **Refund Policy**: Negative amounts converted to positive absolute refund value with WARNING.
+  - **Settlement Policy**: Convert to settlement suggested if keyword patterns ("settled", "reimbursement", "refund transfer", "paid back") are detected.
+  - **Date Ambiguity**: Choose formatting interpretation (MM-DD-YYYY vs DD-MM-YYYY).
+  - **Lifecycle Policy**: Flag warning if expense date lies outside member's join/left bounds.
+
+---
+
+## Version 1.29.0
+
+2026-06-15
+
+## Prompt Given
+Create a Financial Intelligence Agent for the Shared Expense Management App.
+
+## Changes Made
+- Created backend data retrieval tool service [aiTools.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiTools.service.js) querying Group, Members, Expenses, Splits, settlements, trip breakdowns, category totals, and anomaly statistics via Prisma.
+- Developed AI agent execution core [aiAgent.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiAgent.service.js):
+  - Bundles the entire group profile into a single prompt context.
+  - Queries Google's Gemini 1.5 Flash REST API securely using `process.env.GEMINI_API_KEY` with context memory support (sending previous message threads).
+  - Implements an offline **Local Fallback Reasoning Engine** that parses query keyword strings, computes real-time mathematics dynamically on live database records, and outputs translations in 9 localized languages (English, Hindi, Bengali, Marathi, Gujarati, Tamil, Telugu, Malayalam, Punjabi).
+- Built AI transaction query history log database [aiLog.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiLog.service.js) writing query parameters, languages, response times, and timestamps to [ai_queries.json](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/data/ai_queries.json).
+- Implemented `queryFinancialAgent` controller in [ai.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/ai.controller.js) validating group membership limits (Privacy/Security) and tracking response speed.
+- Registered backend route `/api/ai/query` inside [ai.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/ai.routes.js) and mounted it in the main index router [index.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/index.js).
+- Built React client service [ai.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/ai.service.js) wrapping axios queries.
+- Created the AI Assistant Page [AIAssistant.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/AIAssistant.jsx) containing:
+  - Configuration drop selectors (pick Group and Language).
+  - Chat stream displaying User and Assistant messages, suggested prompt bubbles, typing status indicator, and automatic scroll-to-bottom effects.
+  - Custom React markdown parser rendering lists, bold highlights, blockquotes, and code elements.
+  - Interactive custom widgets rendering insights list tags, responsive tabular sheets, and flow-direction arrow plans for simplified suggested settlements.
+- Integrated route path `/ai-assistant` into sidebar navigation list [Sidebar.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/components/layout/Sidebar.jsx) and registered path mapping in [AppRoutes.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/routes/AppRoutes.jsx).
+
+## Files Added
+- [aiTools.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiTools.service.js)
+- [aiLog.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiLog.service.js)
+- [aiAgent.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiAgent.service.js)
+- [ai.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/ai.controller.js)
+- [ai.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/ai.routes.js)
+- [ai.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/ai.service.js)
+- [AIAssistant.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/AIAssistant.jsx)
+
+## Files Modified
+- [index.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/index.js)
+- [Sidebar.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/components/layout/Sidebar.jsx)
+- [AppRoutes.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/routes/AppRoutes.jsx)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+## Reason For Change
+- Fulfill requirements to deliver an intelligent conversational finance agent that reasons over group expenses, computes minimum-transaction settlements, summarizes trip events, respects group membership scopes, logs operations, and provides interactive UI visual aids in 9 languages.
+
+## Impact On Project
+- Empowers group members to explore and understand their financial transactions using natural language, calculate settlement steps, and run analytics.
+
+---
+
 ## Version 1.28.0
 
 2026-06-15

@@ -35,6 +35,23 @@ export const importService = {
     });
     return response.data;
   },
+
+  validateCSV: async (file, groupId) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('groupId', groupId);
+    const response = await api.post('/expenses/import/validate', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  commitCleanImport: async (groupId, rows) => {
+    const response = await api.post('/expenses/import/commit-clean', { groupId, rows });
+    return response.data;
+  },
 };
 
 export default importService;

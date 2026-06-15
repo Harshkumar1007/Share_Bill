@@ -5,6 +5,7 @@ import groupRoutes from './group.routes.js';
 import importRoutes from './import.routes.js';
 import globalExpenseRoutes from './globalExpense.routes.js';
 import activityRoutes from './activity.routes.js';
+import aiRoutes from './ai.routes.js';
 
 const router = express.Router();
 
@@ -14,5 +15,6 @@ router.use('/groups', groupRoutes);
 router.use('/import', importRoutes);
 router.use('/expenses', globalExpenseRoutes);
 router.use('/activities', activityRoutes);
+router.use('/ai', aiRoutes);
 
 export default router;
