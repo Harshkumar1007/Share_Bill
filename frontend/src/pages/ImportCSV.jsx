@@ -43,6 +43,7 @@ export const ImportCSV = () => {
   const [validationReport, setValidationReport] = useState(null);
   const [resolvedRows, setResolvedRows] = useState([]);
   const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [aiSuggestions, setAiSuggestions] = useState([]);
   const [currentTab, setCurrentTab] = useState('WARNINGS');
 
   // Editing Row Modal State
@@ -115,6 +116,7 @@ export const ImportCSV = () => {
       const counts = getTabCounts();
       if (counts.REVIEW_REQUIRED > 0) setCurrentTab('REVIEW_REQUIRED');
       else if (counts.WARNINGS > 0) setCurrentTab('WARNINGS');
+      else if (counts.AI_SUGGESTIONS > 0) setCurrentTab('AI_SUGGESTIONS');
       else if (counts.AUTO_FIXED > 0) setCurrentTab('AUTO_FIXED');
       else if (counts.REJECTED > 0) setCurrentTab('REJECTED');
       else setCurrentTab('WARNINGS');
@@ -181,6 +183,7 @@ export const ImportCSV = () => {
       if (response.success && response.report) {
         setValidationReport(response.report);
         setAiAnalysis(response.aiAnalysis);
+        setAiSuggestions(response.aiSuggestions || []);
         
         // Initialize local copy of rows for dynamic inline resolutions
         const initializedRows = response.report.rows.map(row => ({
@@ -208,20 +211,158 @@ export const ImportCSV = () => {
     setValidationReport(null);
     setResolvedRows([]);
     setAiAnalysis(null);
+    setAiSuggestions([]);
     setImportResult(null);
     setError('');
   };
 
   // Helper: tab counts calculation
   const getTabCounts = () => {
-    if (!resolvedRows) return { AUTO_FIXED: 0, WARNINGS: 0, REVIEW_REQUIRED: 0, REJECTED: 0 };
+    if (!resolvedRows) return { AUTO_FIXED: 0, WARNINGS: 0, REVIEW_REQUIRED: 0, REJECTED: 0, AI_SUGGESTIONS: 0 };
     
     return {
       AUTO_FIXED: resolvedRows.filter(r => r.autoFixes && r.autoFixes.length > 0 && !r.rejected).length,
       WARNINGS: resolvedRows.filter(r => r.issues?.some(i => i.severity === 'WARNING') && !r.rejected).length,
       REVIEW_REQUIRED: resolvedRows.filter(r => r.issues?.some(i => i.severity === 'REVIEW_REQUIRED') && !r.rejected).length,
-      REJECTED: resolvedRows.filter(r => r.rejected).length
+      REJECTED: resolvedRows.filter(r => r.rejected).length,
+      AI_SUGGESTIONS: aiSuggestions.filter(s => !s.applied && !s.rejected).length
     };
+  };
+
+  // AI Suggestion Application Core
+  const applySuggestion = (sug) => {
+    const action = sug.recommendedAction?.action;
+    const params = sug.recommendedAction?.params || {};
+    const rowNumber = params.rowNumber;
+    if (!rowNumber) return;
+
+    setResolvedRows(prev => prev.map(row => {
+      if (row.rowNumber !== rowNumber) return row;
+
+      let updatedRow = { ...row };
+      let updatedRecord = { ...row.record };
+      let remainingIssues = [...(row.issues || [])];
+
+      if (action === 'skip') {
+        updatedRow.duplicateStrategy = 'skip';
+        updatedRow.rejected = true;
+      } else if (action === 'keep_both') {
+        updatedRow.duplicateStrategy = 'keep_both';
+      } else if (action === 'use_dd_mm_yyyy' || action === 'use_mm_dd_yyyy') {
+        const format = action === 'use_dd_mm_yyyy' ? 'DD-MM-YYYY' : 'MM-DD-YYYY';
+        const rawDate = row.rawRow?.split(',')[0] || row.record.date;
+        const parts = rawDate.split(/[-/]/);
+        if (parts.length === 3) {
+          const val1 = parts[0].trim();
+          const val2 = parts[1].trim();
+          const year = parts[2].trim();
+          let newDate = row.record.date;
+          if (format === 'MM-DD-YYYY') {
+            newDate = `${year}-${val1.padStart(2, '0')}-${val2.padStart(2, '0')}`;
+          } else if (format === 'DD-MM-YYYY') {
+            newDate = `${year}-${val2.padStart(2, '0')}-${val1.padStart(2, '0')}`;
+          }
+          updatedRecord.date = newDate;
+          updatedRow.resolvedDateVal = format;
+          remainingIssues = remainingIssues.filter(i => i.type !== 'AMBIGUOUS_DATE');
+        }
+      } else if (action === 'create_guest') {
+        remainingIssues = remainingIssues.filter(i => i.type !== 'UNKNOWN_MEMBER' && i.type !== 'UNKNOWN_PARTICIPANT' && i.type !== 'UNKNOWN_MEMBER_PARTICIPANT');
+      } else if (action === 'map_member') {
+        const target = params.targetName || params.memberName;
+        if (target) {
+          updatedRecord.paidBy = target;
+          updatedRow.resolvedPayerName = target;
+          remainingIssues = remainingIssues.filter(i => i.type !== 'UNKNOWN_MEMBER' && i.type !== 'MISSING_FIELDS' && i.type !== 'UNKNOWN_PARTICIPANT');
+        }
+      } else if (action === 'convert_to_settlement') {
+        updatedRow.convertToSettlement = true;
+        remainingIssues = remainingIssues.filter(i => i.type !== 'SETTLEMENT_DETECTED');
+      } else if (action === 'keep_as_expense') {
+        updatedRow.convertToSettlement = false;
+        remainingIssues = remainingIssues.filter(i => i.type !== 'SETTLEMENT_DETECTED');
+      } else if (action === 'preserve_currency') {
+        remainingIssues = remainingIssues.filter(i => i.type !== 'MULTIPLE_CURRENCIES' && i.type !== 'MISSING_CURRENCY');
+      } else if (action === 'convert_to_group_default') {
+        updatedRecord.currency = defaultCurrency;
+        remainingIssues = remainingIssues.filter(i => i.type !== 'MULTIPLE_CURRENCIES' && i.type !== 'MISSING_CURRENCY');
+      } else if (action === 'keep_equal') {
+        updatedRecord.splitType = 'EQUAL';
+        remainingIssues = remainingIssues.filter(i => i.type !== 'EQUAL_SPLIT_CONFLICT');
+      } else if (action === 'convert_to_share') {
+        updatedRecord.splitType = 'SHARE';
+        remainingIssues = remainingIssues.filter(i => i.type !== 'EQUAL_SPLIT_CONFLICT');
+      } else if (action === 'normalize_percentage') {
+        if (updatedRecord.splitDetails) {
+          const parts = updatedRecord.splitDetails.split(/[规律;,]/).map(d => d.trim()).filter(d => d !== '');
+          let sum = 0;
+          const detailsList = parts.map(p => {
+            const [name, val] = p.split(':');
+            const value = parseFloat(val);
+            if (!isNaN(value)) sum += value;
+            return { name, value };
+          });
+          if (sum > 0) {
+            const normalized = detailsList.map(d => `${d.name}:${((d.value / sum) * 100).toFixed(1)}`).join(';');
+            updatedRecord.splitDetails = normalized;
+          }
+        }
+        remainingIssues = remainingIssues.filter(i => i.type !== 'PERCENTAGE_SPLIT_CONFLICT' && i.type !== 'INVALID_PERCENTAGE_SPLIT');
+      } else if (action === 'convert_to_absolute') {
+        updatedRecord.amount = Math.abs(row.record.amount);
+        remainingIssues = remainingIssues.filter(i => i.type !== 'NEGATIVE_AMOUNT' && i.type !== 'REFUND_DETECTED');
+      } else if (action === 'approve_lifecycle') {
+        remainingIssues = remainingIssues.filter(i => i.type !== 'LIFECYCLE_VIOLATION');
+      }
+
+      let newStatus = 'VALID';
+      if (remainingIssues.some(i => i.severity === 'CRITICAL')) {
+        newStatus = 'REJECTED';
+      } else if (remainingIssues.some(i => i.severity === 'REVIEW_REQUIRED')) {
+        newStatus = 'REVIEW_REQUIRED';
+      } else if (remainingIssues.some(i => i.severity === 'WARNING')) {
+        newStatus = 'WARNING';
+      }
+
+      return {
+        ...updatedRow,
+        status: newStatus,
+        rejected: newStatus === 'REJECTED' ? true : updatedRow.rejected,
+        record: updatedRecord,
+        issues: remainingIssues
+      };
+    }));
+
+    setAiSuggestions(prev => prev.map(s => {
+      if (s.issueId === sug.issueId) {
+        return { ...s, applied: true };
+      }
+      return s;
+    }));
+  };
+
+  const rejectSuggestion = (sug) => {
+    setAiSuggestions(prev => prev.map(s => {
+      if (s.issueId === sug.issueId) {
+        return { ...s, rejected: true };
+      }
+      return s;
+    }));
+  };
+
+  const handleApplyAllSafeSuggestions = () => {
+    let appliedCount = 0;
+    aiSuggestions.forEach(sug => {
+      if (sug.safeToAutoApply && !sug.applied && !sug.rejected) {
+        applySuggestion(sug);
+        appliedCount++;
+      }
+    });
+    if (appliedCount > 0) {
+      alert(`Successfully applied ${appliedCount} safe AI suggestions automatically.`);
+    } else {
+      alert("No pending safe AI suggestions found.");
+    }
   };
 
   // Row update helpers
@@ -886,7 +1027,8 @@ export const ImportCSV = () => {
                     { id: 'WARNINGS', label: 'Warnings', count: tabCounts.WARNINGS },
                     { id: 'REVIEW_REQUIRED', label: 'Review Required', count: tabCounts.REVIEW_REQUIRED },
                     { id: 'AUTO_FIXED', label: 'Auto-Fixed', count: tabCounts.AUTO_FIXED },
-                    { id: 'REJECTED', label: 'Rejected / Skipped', count: tabCounts.REJECTED }
+                    { id: 'REJECTED', label: 'Rejected / Skipped', count: tabCounts.REJECTED },
+                    { id: 'AI_SUGGESTIONS', label: 'AI Suggestions', count: tabCounts.AI_SUGGESTIONS }
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -904,18 +1046,119 @@ export const ImportCSV = () => {
                 
                 {/* Bulk tools */}
                 <div className="flex gap-2">
-                  <button
-                    onClick={handleApproveAll}
-                    className="text-xs font-bold bg-brand-50 border border-brand-200 text-brand-700 hover:bg-brand-100 px-3 py-1.5 rounded-xl dark:bg-brand-950/20 dark:text-brand-400 dark:border-brand-900/30 transition-all"
-                  >
-                    Accept All Recommendations
-                  </button>
+                  {currentTab === 'AI_SUGGESTIONS' ? (
+                    <button
+                      onClick={handleApplyAllSafeSuggestions}
+                      className="text-xs font-bold bg-emerald-50 border border-emerald-250 text-emerald-700 hover:bg-emerald-100 px-3 py-1.5 rounded-xl dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30 transition-all flex items-center gap-1"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Apply All Safe AI Suggestions
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleApproveAll}
+                      className="text-xs font-bold bg-brand-50 border border-brand-200 text-brand-700 hover:bg-brand-100 px-3 py-1.5 rounded-xl dark:bg-brand-950/20 dark:text-brand-400 dark:border-brand-900/30 transition-all"
+                    >
+                      Accept All Recommendations
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* Rows List in Active Tab */}
               <div className="p-6 divide-y divide-slate-100 dark:divide-dark-800">
-                {activeTabRows.length > 0 ? (
+                {currentTab === 'AI_SUGGESTIONS' ? (
+                  aiSuggestions.filter(s => !s.applied && !s.rejected).length > 0 ? (
+                    aiSuggestions.filter(s => !s.applied && !s.rejected).map((sug) => {
+                      const rowNum = sug.recommendedAction?.params?.rowNumber;
+                      const relatedRow = resolvedRows.find(r => r.rowNumber === rowNum);
+                      return (
+                        <div key={sug.issueId} className="py-6 first:pt-0 last:pb-0 space-y-4">
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-bold text-slate-400">Row #{rowNum || 'N/A'}</span>
+                              <span className="text-xs px-2.5 py-0.5 rounded-full border font-bold bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-950/20 dark:text-brand-400">
+                                {sug.type}
+                              </span>
+                              {sug.safeToAutoApply && (
+                                <span className="text-xs px-2.5 py-0.5 rounded-full border font-bold bg-emerald-50 text-emerald-700 border-emerald-250 dark:bg-emerald-950/20 dark:text-emerald-400">
+                                  SAFE SUGGESTION
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-slate-455">
+                                Confidence: <strong className="text-slate-805 dark:text-dark-50">{sug.confidence}%</strong>
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="bg-slate-50/50 dark:bg-dark-950/30 p-4 rounded-2xl border border-slate-100 dark:border-dark-800/80 space-y-2">
+                            <div>
+                              <span className="block text-2xs uppercase text-slate-400 font-bold">Problem Description</span>
+                              <span className="text-sm font-semibold text-slate-850 dark:text-dark-50 block">
+                                {relatedRow ? `"${relatedRow.record?.description}" paid by ${relatedRow.record?.paidBy} (${relatedRow.record?.amount})` : sug.explanation}
+                              </span>
+                            </div>
+                            {relatedRow && (
+                              <div>
+                                <span className="block text-2xs uppercase text-slate-400 font-bold">AI Explanation</span>
+                                <span className="text-xs text-slate-700 dark:text-dark-200 block mt-1">{sug.explanation}</span>
+                              </div>
+                            )}
+                            <div className="pt-2 border-t border-slate-100 dark:border-dark-800/50">
+                              <span className="block text-2xs uppercase text-slate-400 font-bold">Recommended Resolution</span>
+                              <span className="text-xs font-bold text-brand-650 dark:text-brand-400 block mt-1">
+                                {sug.recommendedAction?.description}
+                              </span>
+                            </div>
+                            {sug.alternativeActions && sug.alternativeActions.length > 0 && (
+                              <div className="pt-2">
+                                <span className="block text-2xs uppercase text-slate-400 font-bold">Alternative Resolutions</span>
+                                {sug.alternativeActions.map((alt, idx) => (
+                                  <span key={idx} className="block text-3xs text-slate-500 dark:text-dark-450 mt-0.5">
+                                    - {alt.description} (Confidence: {alt.confidence}%)
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => applySuggestion(sug)}
+                              className="px-4 py-2 text-xs font-bold text-white bg-emerald-650 hover:bg-emerald-550 rounded-xl transition-all shadow-md shadow-emerald-600/10"
+                            >
+                              Accept Suggestion
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => rejectSuggestion(sug)}
+                              className="px-4 py-2 text-xs font-bold text-slate-605 bg-slate-100 hover:bg-slate-205 rounded-xl dark:bg-dark-800 dark:text-dark-150 transition-all"
+                            >
+                              Reject
+                            </button>
+                            {relatedRow && (
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(relatedRow)}
+                                className="px-4 py-2 text-xs font-bold text-brand-605 bg-brand-50 hover:bg-brand-100 rounded-xl dark:bg-brand-950/20 dark:text-brand-400 transition-all"
+                              >
+                                Edit Manually
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-center py-12 text-slate-450">
+                      <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+                      <p className="text-sm font-semibold">No pending AI suggestions available.</p>
+                    </div>
+                  )
+                ) : activeTabRows.length > 0 ? (
                   activeTabRows.map((row) => (
                     <div key={row.rowNumber} className="py-6 first:pt-0 last:pb-0 space-y-4">
                       
@@ -935,7 +1178,7 @@ export const ImportCSV = () => {
                         <div className="flex gap-1">
                           <button
                             onClick={() => openEditModal(row)}
-                            className="p-1.5 rounded-lg text-slate-450 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-dark-800 dark:hover:text-dark-100"
+                            className="p-1.5 rounded-lg text-slate-455 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-dark-800 dark:hover:text-dark-100"
                             title="Edit row details"
                           >
                             <Edit className="h-4 w-4" />
@@ -1013,8 +1256,8 @@ export const ImportCSV = () => {
                                       onClick={() => setDuplicateStrategy(row.rowNumber, opt.strategy)}
                                       className={`px-3 py-1 rounded-lg font-bold border transition-all ${
                                         row.duplicateStrategy === opt.strategy
-                                          ? 'bg-slate-800 border-slate-800 text-white dark:bg-dark-100 dark:text-dark-900 dark:border-dark-100'
-                                          : 'bg-white hover:bg-slate-100 text-slate-650 border-slate-200 dark:bg-dark-900 dark:border-dark-750 dark:hover:bg-dark-800'
+                                          ? 'bg-slate-805 text-white dark:bg-dark-100 dark:text-dark-900 dark:border-dark-100'
+                                          : 'bg-white hover:bg-slate-100 text-slate-655 border-slate-202 dark:bg-dark-900 dark:border-dark-750 dark:hover:bg-dark-800'
                                       }`}
                                     >
                                       {opt.label}
@@ -1026,7 +1269,7 @@ export const ImportCSV = () => {
 
                             {issue.type === 'SETTLEMENT_DETECTED' && (
                               <div className="pl-6 flex items-center gap-3">
-                                <label className="flex items-center gap-2 font-semibold text-slate-700 dark:text-dark-250 cursor-pointer">
+                                <label className="flex items-center gap-2 font-semibold text-slate-705 dark:text-dark-250 cursor-pointer">
                                   <input
                                     type="checkbox"
                                     checked={row.convertToSettlement}

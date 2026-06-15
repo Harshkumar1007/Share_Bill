@@ -52,6 +52,11 @@ export const importService = {
     const response = await api.post('/expenses/import/commit-clean', { groupId, rows });
     return response.data;
   },
+
+  getResolveSuggestions: async (groupId, validationReport) => {
+    const response = await api.post('/expenses/import/resolve-suggestions', { groupId, validationReport });
+    return response.data;
+  },
 };
 
 export default importService;

@@ -4,6 +4,33 @@ This file tracks every architectural decision, feature addition, refactor, and A
 
 ---
 
+## Version 1.31.0
+
+2026-06-15
+
+## Prompt Given
+Add an AI Resolution Assistant to ShareBill's CSV Import Validation Engine.
+
+## Changes Made
+- Created backend AI suggestions service [aiResolution.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiResolution.service.js) executing Gemini structured JSON resolution suggestion generation, with a deterministic offline local fallback suggestion engine matching 13 required issue types, programmatically checking confidence/deletion/merges/lifecycle safety rules.
+- Exposed and registered suggestions router path POST `/api/expenses/import/resolve-suggestions` mapping to `getImportSuggestions` in [globalExpense.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/globalExpense.routes.js) and [importValidator.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/importValidator.controller.js).
+- Configured validation route `POST /api/expenses/import/validate` to dynamically run resolution suggestion queries and return results in the initial payload response.
+- Integrated suggestions query caller in frontend service client [import.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/import.service.js).
+- Redesigned import review page [ImportCSV.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportCSV.jsx) to declare `aiSuggestions` states, added **AI Suggestions** as the fifth dashboard review tab, engineered accept/reject local mapping mutation execution logic, and added the bulk execution button **Apply All Safe AI Suggestions** programmatically targeting safe suggestions.
+- Created and executed test script [test_ai_resolution.js](file:///C:/Users/ASUS/.gemini/antigravity-ide/brain/082c8c4a-3a7c-49b9-b876-f625bd95f91e/scratch/test_ai_resolution.js) checking safety rule checks and issue mappings.
+
+## Files Added
+- [aiResolution.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiResolution.service.js)
+
+## Files Modified
+- [globalExpense.routes.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/routes/globalExpense.routes.js)
+- [importValidator.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/importValidator.controller.js)
+- [import.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/services/import.service.js)
+- [ImportCSV.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportCSV.jsx)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+---
+
 ## Version 1.30.0
 
 2026-06-15

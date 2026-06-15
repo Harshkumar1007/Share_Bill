@@ -4,6 +4,7 @@ import { runCSVValidation, parseSplitDetails } from '../services/csvValidator.se
 import { getGroupContext } from '../services/aiAgent.service.js';
 import { generateAiImportAnalysis } from '../services/aiImportAnalysis.service.js';
 import { logActivity } from '../services/activity.service.js';
+import { generateResolutionSuggestions } from '../services/aiResolution.service.js';
 
 /**
  * @desc    Validate uploaded CSV and return detailed report + AI insights
@@ -56,6 +57,15 @@ export const validateImportCSV = async (req, res, next) => {
     // Run AI analysis
     const groupContext = await getGroupContext(groupId);
     const aiAnalysis = await generateAiImportAnalysis(validationReport, groupContext);
+    
+    // Generate AI Suggestions
+    let aiSuggestions = [];
+    try {
+      const suggestionsRes = await generateResolutionSuggestions(validationReport, groupMembers, defaultCurrency);
+      aiSuggestions = suggestionsRes.suggestions || [];
+    } catch (err) {
+      console.error('Failed to generate suggestions during CSV validation:', err);
+    }
 
     // Log validation completion activity
     try {
@@ -85,7 +95,8 @@ export const validateImportCSV = async (req, res, next) => {
     res.status(200).json({
       success: true,
       report: validationReport,
-      aiAnalysis
+      aiAnalysis,
+      aiSuggestions
     });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
@@ -369,6 +380,42 @@ export const commitCleanImport = async (req, res, next) => {
         settlementsCount,
         guestsCreated: guestMembersCreated
       }
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * @desc    Get AI resolution suggestions on parsed CSV rows
+ * @route   POST /api/expenses/import/resolve-suggestions
+ * @access  Private
+ */
+export const getImportSuggestions = async (req, res, next) => {
+  const { groupId, validationReport } = req.body;
+  if (!groupId || !validationReport) {
+    return res.status(400).json({ success: false, error: 'Group ID and validation report are required.' });
+  }
+
+  try {
+    const groupMembers = await prisma.groupMember.findMany({
+      where: { groupId, leftAt: null },
+      include: {
+        user: { select: { id: true, name: true, email: true } }
+      }
+    });
+
+    const existingExpenses = await prisma.expense.findMany({
+      where: { groupId }
+    });
+    const defaultCurrency = existingExpenses[0]?.currency || 'USD';
+
+    const aiSuggestions = await generateResolutionSuggestions(validationReport, groupMembers, defaultCurrency);
+
+    res.status(200).json({
+      success: true,
+      suggestions: aiSuggestions.suggestions || [],
+      engine: aiSuggestions.engine || 'Local Fallback'
     });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
