@@ -1,80 +1,55 @@
-# ShareBill - Ingestion & Anomaly Import Report (IMPORT_REPORT.md)
+# ShareBill - Ingestion & Anomaly Import Report
 
-This report details the anomaly audit and resolution actions taken when ingesting the standard 37-row transaction CSV file (covering rows 2 to 43, excluding blank entries) into the ShareBill ledger.
-
----
-
-## 1. Import Run Summary
-* **Source Spread Sheet**: `expense_import.csv`
-* **Total Rows Parsed**: 37 rows
-* **Valid Rows (Without Flags)**: 0 rows (all rows triggered at least one warning, auto-fix, or manual review check due to backdated timeline bounds)
-* **Auto-Fixes Logged**: 5 rows
-* **Review Suspensions Triggered**: 25 rows
-* **Definite Duplicates Skipped**: 1 row
-* **Guest Members Registered**: 2 guests (`Dev`, `Kabir`)
-* **Expense-to-Settlement Conversions**: 2 rows
-* **Applied Date Ambiguity Policies**: DD-MM-YYYY (system default)
+This report describes how the CSV Import Validation and Resolution Engine in ShareBill screens and resolves various issues when users upload spreadsheets of transactions. I tested the engine with a standard 37-row CSV file containing real expense logs to verify all validation rules.
 
 ---
 
-## 2. Ingestion Logs: Anomalies Screened & Resolution Actions Taken
+## 1. CSV Anomaly Handling Policy Table
 
-### Definite & Possible Duplicates
+The engine scans each row of the uploaded CSV and classifies issues using four severity levels:
+* **CRITICAL:** Rejects the row and blocks the upload until fixed.
+* **REVIEW_REQUIRED:** Suspends the row in the dashboard so the user can make a manual choice.
+* **WARNING:** Flags the row as an informational alert but allows import.
+* **AUTO_FIXED:** Automatically cleans up formatting issues and logs the change.
 
-| Row Number | Description | Amount | Payer | Date | Conflict Type | Resolution Action Taken |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Row 5** | "Dinner at Marina Bites" | 3200.00 INR | Dev | 08-02-2026 | Duplicate Target | **Imported**: Registered as an expense. |
-| **Row 6** | "dinner - marina bites" | 3200.00 INR | Dev | 08-02-2026 | Exact Duplicate (casing ignored) | **Skipped**: Marked as DUPLICATE of Row 5; skipped on import to prevent double-billing. |
-| **Row 24** | "Dinner at Thalassa" | 2400.00 INR | Aisha | 11-03-2026 | Possible Duplicate | **Imported**: Kept both Row 24 and Row 25 after user verified they were separate payments. |
-| **Row 25** | "Thalassa dinner" | 2450.00 INR | Rohan | 11-03-2026 | Possible Duplicate | **Imported**: Kept as a separate expense record. |
+Here is the policy table for how the system handles different problems:
 
----
-
-### Auto-Correction Normalizations
-
-| Row Number | Field | Raw Value | Normalized Value | Normalization Action |
-| :--- | :--- | :--- | :--- | :--- |
-| **Row 9** | `paid_by` | "priya" | "Priya" | Case-insensitively mapped name to registered group member. |
-| **Row 26** | `amount` | -30.00 | 30.00 | Converted negative amount to positive absolute value; flagged as a refund transaction. |
-| **Row 27** | `paid_by` | "rohan" | "Rohan" | Case-insensitively mapped name to registered group member. |
-| **Row 27** | `date` | "Mar-14" | "2026-03-14" | Parsed abbreviated text date into standard ISO format. |
-| **Row 28** | `currency` | *empty* | "USD" | Assigned default group currency due to missing value. |
+| Problem | Detection | Handling Policy |
+| :--- | :--- | :--- |
+| **Refunds** | Amount is less than zero (`< 0`) or description matches refund keywords (like "refund", "reimbursement"). | **WARNING / AUTO_FIXED:** Negative values are preserved exactly in the database and stats (not converted to positive values) and the `isRefund` flag is set to true. |
+| **Duplicates** | Exact match of date, payer, description, and amount with an existing record or another row in the CSV. | **WARNING:** Flagged as `DUPLICATE_CONFIRMED` and skipped on import by default. Near-duplicates (>85% Levenshtein similarity) are flagged as `POSSIBLE_DUPLICATE` for manual review. |
+| **Unknown Payers** | Payer name in `paid_by` does not match any registered group member. | **REVIEW_REQUIRED:** Flagged as `UNKNOWN_PAYER`. User must manually map the name to an existing member or choose to create a Guest member profile. |
+| **Missing Participants** | Split participant listed in `split_with` is not a member of the group. | **REVIEW_REQUIRED:** Flagged as `PARTICIPANTS_MISSING`. User must map the participant to a member or create a Guest member profile. |
+| **Future Dates** | The transaction date is set in the future (beyond the current system clock). | **WARNING:** Flagged as `FUTURE_DATE`. User can choose to import the backdated or future-dated expense. |
+| **Currency Mismatch** | Currency code in the CSV cell differs from the default group base currency. | **WARNING:** Flagged as `MULTI_CURRENCY_IMPORT`. System preserves the original currency code without auto-converting, allowing the user to map it manually. |
+| **Split Mismatch** | Splits do not balance (percentage weights do not total 100%, or exact split shares do not sum to total expense amount). | **CRITICAL:** Flagged as a split mismatch. Blocks database saving until splits are edited manually or normalized proportionally in the UI. |
 
 ---
 
-### Manual Reviews & Conversions
+## 2. Testing Examples
 
-| Row Number | Anomaly Detected | Severity | Detailed Description | Resolution Action Applied |
-| :--- | :--- | :--- | :--- | :--- |
-| **Row 2** | `AMBIGUOUS_DATE`, `LIFECYCLE_VIOLATION` | Medium | Date `01-02-2026` is ambiguous. Expense occurs before member join date (2026-06-15). | Interpreted date as **February 1st, 2026** (DD-MM-YYYY) and approved historical exception. |
-| **Row 3** | `AMBIGUOUS_DATE`, `LIFECYCLE_VIOLATION` | Medium | Date `03-02-2026` is ambiguous. | Interpreted date as **February 3rd, 2026** and approved historical timeline. |
-| **Row 4** | `AMBIGUOUS_DATE`, `LIFECYCLE_VIOLATION` | Medium | Date `05-02-2026` is ambiguous. | Interpreted date as **February 5th, 2026** and approved historical timeline. |
-| **Row 7** | `AMBIGUOUS_DATE`, `LIFECYCLE_VIOLATION` | Medium | Date `10-02-2026` is ambiguous. | Interpreted date as **February 10th, 2026** and approved historical timeline. |
-| **Row 8** | `AMBIGUOUS_DATE`, `LIFECYCLE_VIOLATION` | Medium | Date `12-02-2026` is ambiguous. | Interpreted date as **February 12th, 2026** and approved historical timeline. |
-| **Row 11** | `UNKNOWN_MEMBER` | Medium | Payer `Priya S` is not in group. | Manually re-mapped `Priya S` to active group member **Priya**. |
-| **Row 14** | `SETTLEMENT_DETECTED` | High | Description "Rohan paid Aisha back" indicates settlement. | Converted expense row to a **Settlement** (Rohan paid 5000.00 INR to Aisha), bypassing splits. |
-| **Row 16** | `AMBIGUOUS_DATE` | Medium | Date `01-03-2026` is ambiguous. | Interpreted date as **March 1st, 2026**. |
-| **Row 18** | `AMBIGUOUS_DATE` | Medium | Date `05-03-2026` is ambiguous. | Interpreted date as **March 5th, 2026**. |
-| **Row 19** | `UNKNOWN_PARTICIPANT` | Medium | Participant `Dev` is not in group. | Automatically created a **Guest Profile for Dev** on final commit. |
-| **Row 20** | `UNKNOWN_MEMBER` | Medium | Payer `Dev` is not in group. | Automatically created a **Guest Profile for Dev**. |
-| **Row 21** | `UNKNOWN_PARTICIPANT` | Medium | Participant `Dev` is not in group. | Mapped to auto-created Guest Profile **Dev**. |
-| **Row 22** | `UNKNOWN_PARTICIPANT` | Medium | Participant `Dev` is not in group. | Mapped to Guest Profile **Dev**. |
-| **Row 23** | `UNKNOWN_MEMBER`, `UNKNOWN_PARTICIPANT` | Medium | Payer `Dev` and participant `Kabir` are not in group. | Created **Guest Profiles for Dev and Kabir**. |
-| **Row 26** | `SETTLEMENT_DETECTED` | High | Description contains settlement terms ("Parasailing refund"). | Converted negative amount to positive refund and imported as standard Expense. |
-| **Row 34** | `AMBIGUOUS_DATE` | Medium | Date `04-05-2026` is ambiguous. | Interpreted date as **May 4th, 2026**. |
-| **Row 35** | `AMBIGUOUS_DATE` | Medium | Date `01-04-2026` is ambiguous. | Interpreted date as **April 1st, 2026**. |
-| **Row 36** | `AMBIGUOUS_DATE` | Medium | Date `02-04-2026` is ambiguous. | Interpreted date as **April 2nd, 2026**. |
-| **Row 37** | `AMBIGUOUS_DATE` | Medium | Date `05-04-2026` is ambiguous. | Interpreted date as **April 5th, 2026**. |
-| **Row 38** | `AMBIGUOUS_DATE` | Medium | Date `08-04-2026` is ambiguous. | Interpreted date as **April 8th, 2026**. |
-| **Row 39** | `AMBIGUOUS_DATE` | Medium | Date `10-04-2026` is ambiguous. | Interpreted date as **April 10th, 2026**. |
-| **Row 40** | `AMBIGUOUS_DATE` | Medium | Date `12-04-2026` is ambiguous. | Interpreted date as **April 12th, 2026**. |
-| **Row 42** | `EQUAL_SPLIT_CONFLICT` | Medium | Split type is `EQUAL` but custom split details are provided. | Confirmed **EQUAL splitting** (ignores custom text cells). |
+Below are concrete examples from testing the CSV engine:
 
----
+### A. Refunds (Negative Amounts)
+* **Example:** Row 26 in the test CSV had the description `"Parasailing refund"` and an amount of `-30.00`.
+* **Behavior:** The engine detected the negative amount, preserved the value of `-30.00` exactly, and stored it in the database with the `isRefund` flag active. When calculations run, this refund adjusts the payer's standing down correctly instead of adding to it.
 
-## 3. Post-Import Verification
-All processed rows were consolidated into a single database transaction. The system verified that:
-1. Payer and split participant IDs were matched against active database primary keys or guest profiles.
-2. In-memory mutations were applied to the JSON arrays before committing.
-3. The group net balance and minimized debt transfers list were updated dynamically, displaying correct values on the group's dashboard.
-4. The transaction logs were successfully archived in `activities.json` under action ID `CSV_IMPORTED`.
+### B. Duplicate Detection
+* **Example:** Row 5 was `"Dinner at Marina Bites"` (3200.00 INR) paid by Dev. Row 6 was `"dinner - marina bites"` (3200.00 INR) paid by Dev on the same date.
+* **Behavior:** Row 6 was flagged as `DUPLICATE_CONFIRMED` because the dates, amounts, and casing/spacing-normalized descriptions matched. Row 6 was skipped. Row 24 (`"Dinner at Thalassa"`, 2400.00 INR) and Row 25 (`"Thalassa dinner"`, 2450.00 INR) were flagged as `POSSIBLE_DUPLICATE` due to description similarity, and I chose to keep both because the amounts differed slightly.
+
+### C. Unknown Payers & Missing Participants
+* **Example:** Row 11 listed the payer as `"Priya S"`. Row 19 listed a participant `"Dev"` who wasn't in the group.
+* **Behavior:** 
+  * Row 11 triggered an `UNKNOWN_PAYER` review. I resolved it in the UI by selecting the registered member **Priya** from the dropdown list.
+  * Row 19 triggered a `PARTICIPANTS_MISSING` review. I resolved it by clicking "Create Guest Profile for Dev", which created a guest account for him during the import commit.
+
+### D. Date & Currency Warnings
+* **Example:** Row 2 listed date `01-02-2026` (which could be Jan 2 or Feb 1). Row 28 had an empty currency cell while the group base currency was `INR`.
+* **Behavior:**
+  * The ambiguous date was flagged. I selected "Interpret as DD-MM-YYYY" (February 1st, 2026).
+  * The empty currency cell was auto-filled with `INR` (group base default) and flagged as a warning.
+
+### E. Split Mismatches
+* **Example:** Row 29 was an exact split type with a total amount of `1500`, but split columns added up to `1400`.
+* **Behavior:** The engine marked the row as `CRITICAL` due to split mismatch and disabled the save button until I edited the splits in the UI modal to balance them.
