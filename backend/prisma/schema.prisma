@@ -79,6 +79,7 @@ model Expense {
   groupId     String
   paidById    String
   splitType   SplitType      @default(EQUAL)
+  isRefund    Boolean        @default(false)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 

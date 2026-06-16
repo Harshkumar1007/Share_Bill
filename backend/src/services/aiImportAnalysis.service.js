@@ -37,16 +37,17 @@ export const runLocalFallbackImportAnalysis = (report, groupContext) => {
   let maxExpenseDesc = '';
 
   cleanRows.forEach(row => {
-    const { amount, currency, description, paidBy } = row.record;
+    const { amount, currency, description, paidBy, isRefund } = row.record;
     const cur = currency || defaultCurrency;
-    totalsByCurrency[cur] = (totalsByCurrency[cur] || 0) + amount;
+    const signedAmount = isRefund ? -Math.abs(amount) : amount;
+    totalsByCurrency[cur] = (totalsByCurrency[cur] || 0) + signedAmount;
     
     // Categorize
     const category = getCategoryFromDesc(description);
-    categoryTotals[category] = (categoryTotals[category] || 0) + amount;
+    categoryTotals[category] = (categoryTotals[category] || 0) + signedAmount;
 
     // Spenders
-    spenderTotals[paidBy] = (spenderTotals[paidBy] || 0) + amount;
+    spenderTotals[paidBy] = (spenderTotals[paidBy] || 0) + signedAmount;
 
     if (amount > maxAmount) {
       maxAmount = amount;
@@ -58,8 +59,16 @@ export const runLocalFallbackImportAnalysis = (report, groupContext) => {
   const mainCurrency = currenciesPresent[0] || defaultCurrency;
   const totalSpendVal = totalsByCurrency[mainCurrency] || 0;
 
+  const refundsCount = (report.rows || []).filter(r => r.record?.isRefund || (r.issues && r.issues.some(i => i.type === 'REFUND_DETECTED' || i.type === 'NEGATIVE_AMOUNT'))).length;
+  const confirmedDuplicatesCount = (report.rows || []).filter(r => r.issues && r.issues.some(i => i.type === 'DUPLICATE_CONFIRMED')).length;
+  const possibleDuplicatesCount = (report.rows || []).filter(r => r.issues && r.issues.some(i => i.type === 'POSSIBLE_DUPLICATE')).length;
+  const unknownPayersCount = (report.rows || []).filter(r => r.issues && r.issues.some(i => i.type === 'UNKNOWN_PAYER')).length;
+  const futureDatesCount = (report.rows || []).filter(r => r.issues && r.issues.some(i => i.type === 'FUTURE_DATE')).length;
+  const missingParticipantsCount = (report.rows || []).filter(r => r.issues && r.issues.some(i => i.type === 'PARTICIPANTS_MISSING' || i.type === 'MISSING_PARTICIPANTS')).length;
+  const multiCurrencyRowsCount = (report.rows || []).filter(r => r.issues && r.issues.some(i => i.type === 'MULTI_CURRENCY_IMPORT' || i.type === 'MULTIPLE_CURRENCIES')).length;
+
   // Import Summary Text
-  let importSummary = `${cleanRows.length} expenses imported.\n\n`;
+  let importSummary = `${cleanRows.length} expenses imported (including ${refundsCount} refunds, ${confirmedDuplicatesCount} confirmed duplicates, ${possibleDuplicatesCount} possible duplicates, ${unknownPayersCount} unknown payers, ${futureDatesCount} future dates, ${missingParticipantsCount} missing participants, and ${multiCurrencyRowsCount} multi-currency rows).\n\n`;
   if (currenciesPresent.length > 0) {
     const spendsStr = currenciesPresent.map(c => `${c} ${totalsByCurrency[c].toLocaleString()}`).join(', ');
     importSummary += `Total Spend ${spendsStr}\n\n`;
@@ -68,7 +77,7 @@ export const runLocalFallbackImportAnalysis = (report, groupContext) => {
   }
   
   const categoryLines = Object.entries(categoryTotals)
-    .filter(([_, val]) => val > 0)
+    .filter(([_, val]) => Math.abs(val) > 0.001)
     .map(([cat, val]) => `${cat} ${mainCurrency} ${val.toLocaleString()}`);
   
   if (categoryLines.length > 0) {
@@ -78,12 +87,12 @@ export const runLocalFallbackImportAnalysis = (report, groupContext) => {
   }
 
   // 2. Duplicate Insights
-  const dupRows = (report.rows || []).filter(r => r.issues && r.issues.some(i => i.type === 'DUPLICATE'));
+  const dupRows = (report.rows || []).filter(r => r.issues && r.issues.some(i => i.type === 'DUPLICATE_CONFIRMED' || i.type === 'POSSIBLE_DUPLICATE'));
   let duplicateInsights = '';
   if (dupRows.length > 0) {
     duplicateInsights = `Detected ${dupRows.length} duplicate expense(s) in this batch.\n` +
       dupRows.map(r => {
-        const issue = r.issues.find(i => i.type === 'DUPLICATE');
+        const issue = r.issues.find(i => i.type === 'DUPLICATE_CONFIRMED' || i.type === 'POSSIBLE_DUPLICATE');
         return `- Row ${r.rowNumber} ("${r.record?.description}"): ${issue.explanation}`;
       }).join('\n');
   } else {
@@ -186,12 +195,13 @@ Active Group Context:
 
 Analyze the data and generate four distinct components:
 1. "importSummary": A text description of the expenses to be imported. E.g.
-"42 expenses imported
+"42 expenses imported (including A refunds, B confirmed duplicates, C possible duplicates, D unknown payers, E future dates, F missing participants, and G multi-currency rows)
 Total Spend ₹54,200
 Food ₹12,000
 Travel ₹18,050
 Accommodation ₹20,000
 Misc ₹4,150"
+Make sure you explicitly count and mention the number of refunds (stored as original negative values), confirmed duplicates, possible duplicates, unknown payers, future dates, missing participants, and multi-currency rows in the summary text if any are detected in the report.
 
 2. "duplicateInsights": Explain why records look duplicated. E.g., which row numbers match existing database rows in dates, descriptions and amounts, and advice on resolution (Keep Existing, Keep Both).
 

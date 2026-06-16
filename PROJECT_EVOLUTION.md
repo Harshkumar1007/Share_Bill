@@ -4,6 +4,88 @@ This file tracks every architectural decision, feature addition, refactor, and A
 
 ---
 
+## Version 1.33.0
+
+2026-06-16
+
+## Prompt Given
+Apply compliance engine corrections for ShareBill's CSV Import Validation and Resolution Engine:
+1. Preserve original negative refund amounts exactly in the database and import statistics rather than converting to positive absolute values.
+2. Remove AI duplicate detection as primary checker, downgrading it, and implement deterministic confirmed duplicates vs possible duplicates (similarity >85%).
+3. Handle exact split checks safely by using absolute value sums to prevent false rejections.
+4. Route unknown payers to REVIEW_REQUIRED as UNKNOWN_PAYER warning, and route missing participants to REVIEW_REQUIRED as PARTICIPANTS_MISSING warning.
+5. Flag future date warning as FUTURE_DATE, and multi-currency imports as MULTI_CURRENCY_IMPORT warning without auto-conversion.
+6. Display and filter these 7 specific compliance event types in the Activity Log and success screens.
+
+## Changes Made
+- Updated frontend timeline [ActivityLog.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ActivityLog.jsx):
+  - Styled timeline icons, colors, and badge metadata for the 7 new compliance event types (`REFUND_DETECTED`, `DUPLICATE_CONFIRMED`, `POSSIBLE_DUPLICATE`, `UNKNOWN_PAYER`, `FUTURE_DATE`, `MULTI_CURRENCY_IMPORT`, `PARTICIPANTS_MISSING`).
+  - Added new event type filter options in the filter selector dropdown.
+- Updated AI Import analysis [aiImportAnalysis.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiImportAnalysis.service.js):
+  - Fixed duplicate insights check to use the correct `DUPLICATE_CONFIRMED` and `POSSIBLE_DUPLICATE` types.
+  - Adjusted the spend analysis logic to correctly handle refunds (original negative amounts) without double-negation, calculating accurate signed category, spender, and total spends.
+- Updated frontend [ImportCSV.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportCSV.jsx):
+  - Adjusted manual edit form save handler to preserve negative values for refunds.
+  - Rectified compilation errors caused by unclosed `<p>` tag, unbalanced closing `</div>` tags, and unclosed comments in JSX.
+- Updated local compliance verification script [verify_compliance_engine.js](file:///C:/Users/ASUS/.gemini/antigravity-ide/brain/79412c4d-0a15-4aa2-845b-815e9db29b92/scratch/verify_compliance_engine.js):
+  - Aligned test assertions with the new issue types and negative amount refund preservation.
+
+## Files Added
+None
+
+## Files Modified
+- [ActivityLog.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ActivityLog.jsx)
+- [aiImportAnalysis.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiImportAnalysis.service.js)
+- [ImportCSV.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportCSV.jsx)
+- [verify_compliance_engine.js](file:///C:/Users/ASUS/.gemini/antigravity-ide/brain/79412c4d-0a15-4aa2-845b-815e9db29b92/scratch/verify_compliance_engine.js)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+---
+
+## Version 1.32.0
+
+2026-06-16
+
+## Prompt Given
+Implement focused compliance edits on the CSV Import Validation & Resolution Engine:
+1. Support negative amounts as Refunds (storing positive absolute value with `isRefund: true` flag in the DB, and adjusting balance aggregators by -1).
+2. Implement Phase 1 intra-batch duplicate detection within the CSV spreadsheet itself.
+3. Validate EXACT split types to verify splits sum to the expense amount, rejecting mismatch rows as CRITICAL.
+4. Route missing split_with participants to REVIEW_REQUIRED instead of CRITICAL rejection, providing interactive resolution choices in the UI.
+
+## Changes Made
+- Updated Prisma schema `schema.prisma` adding `isRefund Boolean @default(false)` to the `Expense` model and pushed migrations.
+- Updated CSV Validation Service [csvValidator.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/csvValidator.service.js):
+  - Parsed negative amount records as Refunds (`isRefund: true`, storing positive amount) and returned a warning of type `NEGATIVE_AMOUNT`.
+  - Added Phase 1 intra-CSV duplicate detection in `runCSVValidation` to search for similar rows in the uploaded batch.
+  - Added split sum check validation for `EXACT` splits, flagging mismatch rows as `SPLIT_MISMATCH` critical errors.
+  - Re-routed missing `split_with` values to `MISSING_PARTICIPANTS` warnings of `REVIEW_REQUIRED` severity.
+- Updated database storage logic inside the Prisma transaction loop of `commitCleanImport` in [importValidator.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/importValidator.controller.js) to store `isRefund` and compute counts.
+- Modified group balance calculator `getGroupBalances` in [group.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/group.controller.js) to scale balance additions and subtractions by -1 when `isRefund` is true.
+- Modified AI Context balances retriever `getBalances` in [aiTools.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiTools.service.js) to align with refund calculations.
+- Modified AI Import analysis engine [aiImportAnalysis.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiImportAnalysis.service.js) to calculate and report refunds, duplicates, and split errors.
+- Modified frontend import preview page [ImportCSV.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportCSV.jsx):
+  - Rendered a secondary compliance metrics banner containing counts for refunds, duplicates, split mismatches, and missing participants.
+  - Added interactive resolution buttons for missing participants (Split with All, Edit Manually, Reject/Skip Row).
+  - Added specific metrics counters to the final success screen stats grid.
+- Modified frontend timeline [ActivityLog.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ActivityLog.jsx) to style the new activity log event types.
+
+## Files Added
+None
+
+## Files Modified
+- [schema.prisma](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/prisma/schema.prisma)
+- [csvValidator.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/csvValidator.service.js)
+- [importValidator.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/importValidator.controller.js)
+- [group.controller.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/controllers/group.controller.js)
+- [aiTools.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiTools.service.js)
+- [aiImportAnalysis.service.js](file:///c:/Users/ASUS/Desktop/Share_Bill/backend/src/services/aiImportAnalysis.service.js)
+- [ImportCSV.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ImportCSV.jsx)
+- [ActivityLog.jsx](file:///c:/Users/ASUS/Desktop/Share_Bill/frontend/src/pages/ActivityLog.jsx)
+- [PROJECT_EVOLUTION.md](file:///c:/Users/ASUS/Desktop/Share_Bill/PROJECT_EVOLUTION.md)
+
+---
+
 ## Version 1.31.0
 
 2026-06-15

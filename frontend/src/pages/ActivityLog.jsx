@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Plus, Trash2, CreditCard, FileSpreadsheet, Search, RefreshCw, ChevronDown, ChevronUp, Calendar, Clock, Database, User, Loader2 } from 'lucide-react';
+import { Activity, Plus, Trash2, CreditCard, FileSpreadsheet, Search, RefreshCw, ChevronDown, ChevronUp, Calendar, Clock, Database, User, Loader2, AlertTriangle, Copy, DollarSign, Users } from 'lucide-react';
 import { activityService } from '../services/activity.service';
 
 export const ActivityLog = () => {
@@ -96,6 +96,66 @@ export const ActivityLog = () => {
           colorClass: 'bg-violet-50 text-violet-600 dark:bg-violet-950/35 dark:text-violet-400 border-violet-200/30',
           badgeText: 'CSV Import'
         };
+      case 'REFUND_DETECTED':
+        return {
+          icon: RefreshCw,
+          colorClass: 'bg-orange-50 text-orange-600 dark:bg-orange-950/35 dark:text-orange-400 border-orange-200/30',
+          badgeText: 'Refund Detected'
+        };
+      case 'DUPLICATE_CONFIRMED':
+        return {
+          icon: Copy,
+          colorClass: 'bg-red-50 text-red-650 dark:bg-red-950/35 dark:text-red-400 border-red-200/30',
+          badgeText: 'Confirmed Duplicate'
+        };
+      case 'POSSIBLE_DUPLICATE':
+        return {
+          icon: Copy,
+          colorClass: 'bg-amber-50 text-amber-600 dark:bg-amber-950/35 dark:text-amber-400 border-amber-250/20',
+          badgeText: 'Possible Duplicate'
+        };
+      case 'UNKNOWN_PAYER':
+        return {
+          icon: User,
+          colorClass: 'bg-purple-50 text-purple-650 dark:bg-purple-950/35 dark:text-purple-400 border-purple-200/30',
+          badgeText: 'Unknown Payer'
+        };
+      case 'FUTURE_DATE':
+        return {
+          icon: Calendar,
+          colorClass: 'bg-blue-50 text-blue-600 dark:bg-blue-950/35 dark:text-blue-400 border-blue-200/30',
+          badgeText: 'Future Date'
+        };
+      case 'MULTI_CURRENCY_IMPORT':
+        return {
+          icon: DollarSign,
+          colorClass: 'bg-teal-50 text-teal-650 dark:bg-teal-950/35 dark:text-teal-400 border-teal-200/30',
+          badgeText: 'Multi-Currency'
+        };
+      case 'PARTICIPANTS_MISSING':
+        return {
+          icon: Users,
+          colorClass: 'bg-indigo-50 text-indigo-650 dark:bg-indigo-950/35 dark:text-indigo-400 border-indigo-200/30',
+          badgeText: 'Missing Splits'
+        };
+      case 'DUPLICATE_DETECTED_CSV':
+        return {
+          icon: Copy,
+          colorClass: 'bg-amber-50 text-amber-600 dark:bg-amber-950/35 dark:text-amber-400 border-amber-250/20',
+          badgeText: 'Intra-CSV Duplicate'
+        };
+      case 'SPLIT_VALIDATION_FAILED':
+        return {
+          icon: AlertTriangle,
+          colorClass: 'bg-rose-50 text-rose-650 dark:bg-rose-950/35 dark:text-rose-400 border-rose-200/30',
+          badgeText: 'Split Mismatch'
+        };
+      case 'PARTICIPANT_INFO_MISSING':
+        return {
+          icon: User,
+          colorClass: 'bg-indigo-50 text-indigo-650 dark:bg-indigo-950/35 dark:text-indigo-400 border-indigo-200/30',
+          badgeText: 'Missing Splits'
+        };
       default:
         return {
           icon: Activity,
@@ -171,6 +231,13 @@ export const ActivityLog = () => {
           <option value="SETTLEMENT_ADDED" className="dark:bg-dark-900">Settlements Added</option>
           <option value="SETTLEMENT_DELETED" className="dark:bg-dark-900">Settlements Voided</option>
           <option value="CSV_IMPORTED" className="dark:bg-dark-900">CSV Imports</option>
+          <option value="REFUND_DETECTED" className="dark:bg-dark-900">Refunds Detected</option>
+          <option value="DUPLICATE_CONFIRMED" className="dark:bg-dark-900">Confirmed Duplicates</option>
+          <option value="POSSIBLE_DUPLICATE" className="dark:bg-dark-900">Possible Duplicates</option>
+          <option value="UNKNOWN_PAYER" className="dark:bg-dark-900">Unknown Payers</option>
+          <option value="FUTURE_DATE" className="dark:bg-dark-900">Future Dates</option>
+          <option value="MULTI_CURRENCY_IMPORT" className="dark:bg-dark-900">Multi-Currency Imports</option>
+          <option value="PARTICIPANTS_MISSING" className="dark:bg-dark-900">Missing Participant Splits</option>
         </select>
       </div>
 

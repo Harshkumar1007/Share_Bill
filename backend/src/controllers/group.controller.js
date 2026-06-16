@@ -97,7 +97,7 @@ export const getGroups = async (req, res, next) => {
           include: {
             members: true,
             expenses: {
-              select: { amount: true }
+              select: { amount: true, isRefund: true }
             }
           }
         }

@@ -240,7 +240,7 @@ export const ImportCSV = () => {
       if (row.rowNumber !== rowNumber) return row;
 
       let updatedRow = { ...row };
-      let updatedRecord = { ...row.record };
+      let updatedRecord = row.record ? { ...row.record } : null;
       let remainingIssues = [...(row.issues || [])];
 
       if (action === 'skip') {
@@ -250,19 +250,19 @@ export const ImportCSV = () => {
         updatedRow.duplicateStrategy = 'keep_both';
       } else if (action === 'use_dd_mm_yyyy' || action === 'use_mm_dd_yyyy') {
         const format = action === 'use_dd_mm_yyyy' ? 'DD-MM-YYYY' : 'MM-DD-YYYY';
-        const rawDate = row.rawRow?.split(',')[0] || row.record.date;
+        const rawDate = row.rawRow?.split(',')[0] || row.record?.date || '';
         const parts = rawDate.split(/[-/]/);
         if (parts.length === 3) {
           const val1 = parts[0].trim();
           const val2 = parts[1].trim();
           const year = parts[2].trim();
-          let newDate = row.record.date;
+          let newDate = row.record?.date || '';
           if (format === 'MM-DD-YYYY') {
             newDate = `${year}-${val1.padStart(2, '0')}-${val2.padStart(2, '0')}`;
           } else if (format === 'DD-MM-YYYY') {
             newDate = `${year}-${val2.padStart(2, '0')}-${val1.padStart(2, '0')}`;
           }
-          updatedRecord.date = newDate;
+          if (updatedRecord) updatedRecord.date = newDate;
           updatedRow.resolvedDateVal = format;
           remainingIssues = remainingIssues.filter(i => i.type !== 'AMBIGUOUS_DATE');
         }
@@ -271,7 +271,7 @@ export const ImportCSV = () => {
       } else if (action === 'map_member') {
         const target = params.targetName || params.memberName;
         if (target) {
-          updatedRecord.paidBy = target;
+          if (updatedRecord) updatedRecord.paidBy = target;
           updatedRow.resolvedPayerName = target;
           remainingIssues = remainingIssues.filter(i => i.type !== 'UNKNOWN_MEMBER' && i.type !== 'MISSING_FIELDS' && i.type !== 'UNKNOWN_PARTICIPANT');
         }
@@ -284,16 +284,16 @@ export const ImportCSV = () => {
       } else if (action === 'preserve_currency') {
         remainingIssues = remainingIssues.filter(i => i.type !== 'MULTIPLE_CURRENCIES' && i.type !== 'MISSING_CURRENCY');
       } else if (action === 'convert_to_group_default') {
-        updatedRecord.currency = defaultCurrency;
+        if (updatedRecord) updatedRecord.currency = defaultCurrency;
         remainingIssues = remainingIssues.filter(i => i.type !== 'MULTIPLE_CURRENCIES' && i.type !== 'MISSING_CURRENCY');
       } else if (action === 'keep_equal') {
-        updatedRecord.splitType = 'EQUAL';
+        if (updatedRecord) updatedRecord.splitType = 'EQUAL';
         remainingIssues = remainingIssues.filter(i => i.type !== 'EQUAL_SPLIT_CONFLICT');
       } else if (action === 'convert_to_share') {
-        updatedRecord.splitType = 'SHARE';
+        if (updatedRecord) updatedRecord.splitType = 'SHARE';
         remainingIssues = remainingIssues.filter(i => i.type !== 'EQUAL_SPLIT_CONFLICT');
       } else if (action === 'normalize_percentage') {
-        if (updatedRecord.splitDetails) {
+        if (updatedRecord && updatedRecord.splitDetails) {
           const parts = updatedRecord.splitDetails.split(/[规律;,]/).map(d => d.trim()).filter(d => d !== '');
           let sum = 0;
           const detailsList = parts.map(p => {
@@ -309,7 +309,7 @@ export const ImportCSV = () => {
         }
         remainingIssues = remainingIssues.filter(i => i.type !== 'PERCENTAGE_SPLIT_CONFLICT' && i.type !== 'INVALID_PERCENTAGE_SPLIT');
       } else if (action === 'convert_to_absolute') {
-        updatedRecord.amount = Math.abs(row.record.amount);
+        if (updatedRecord && row.record) updatedRecord.amount = Math.abs(row.record.amount);
         remainingIssues = remainingIssues.filter(i => i.type !== 'NEGATIVE_AMOUNT' && i.type !== 'REFUND_DETECTED');
       } else if (action === 'approve_lifecycle') {
         remainingIssues = remainingIssues.filter(i => i.type !== 'LIFECYCLE_VIOLATION');
@@ -407,13 +407,13 @@ export const ImportCSV = () => {
     setResolvedRows(prev => prev.map(row => {
       if (row.rowNumber === rowNumber) {
         // Date parsing logic from DD-MM-YYYY or MM-DD-YYYY raw input
-        const rawDate = row.rawRow.split(',')[0] || row.record.date;
+        const rawDate = row.rawRow?.split(',')[0] || row.record?.date || '';
         const parts = rawDate.split(/[-/]/);
         if (parts.length === 3) {
           const val1 = parts[0].trim();
           const val2 = parts[1].trim();
           const year = parts[2].trim();
-          let newDate = row.record.date;
+          let newDate = row.record?.date || '';
           if (format === 'MM-DD-YYYY') {
             newDate = `${year}-${val1.padStart(2, '0')}-${val2.padStart(2, '0')}`;
           } else if (format === 'DD-MM-YYYY') {
@@ -421,10 +421,10 @@ export const ImportCSV = () => {
           }
           return {
             ...row,
-            record: { ...row.record, date: newDate },
+            record: row.record ? { ...row.record, date: newDate } : null,
             resolvedDateVal: format,
             // Clear ambiguous date warning locally
-            issues: row.issues.filter(i => i.type !== 'AMBIGUOUS_DATE')
+            issues: row.issues?.filter(i => i.type !== 'AMBIGUOUS_DATE') || []
           };
         }
       }
@@ -440,7 +440,32 @@ export const ImportCSV = () => {
           record: { ...row.record, paidBy: memberName },
           resolvedPayerName: memberName,
           // Clear unknown payer warning locally
-          issues: row.issues.filter(i => i.type !== 'UNKNOWN_MEMBER' && i.type !== 'MISSING_FIELDS')
+          issues: row.issues.filter(i => i.type !== 'UNKNOWN_MEMBER' && i.type !== 'UNKNOWN_PAYER' && i.type !== 'MISSING_FIELDS')
+        };
+      }
+      return row;
+    }));
+  };
+
+  const resolveMissingParticipantsWithAll = (rowNumber) => {
+    const memberNames = groupMembers.map(m => m.name).join(', ');
+    setResolvedRows(prev => prev.map(row => {
+      if (row.rowNumber === rowNumber) {
+        const remainingIssues = (row.issues || []).filter(i => i.type !== 'PARTICIPANTS_MISSING' && i.type !== 'MISSING_PARTICIPANTS');
+        let newStatus = 'VALID';
+        if (remainingIssues.some(i => i.severity === 'CRITICAL')) {
+          newStatus = 'REJECTED';
+        } else if (remainingIssues.some(i => i.severity === 'REVIEW_REQUIRED')) {
+          newStatus = 'REVIEW_REQUIRED';
+        } else if (remainingIssues.some(i => i.severity === 'WARNING')) {
+          newStatus = 'WARNING';
+        }
+        return {
+          ...row,
+          record: row.record ? { ...row.record, splitWith: memberNames } : null,
+          status: newStatus,
+          rejected: newStatus === 'REJECTED' ? true : row.rejected,
+          issues: remainingIssues
         };
       }
       return row;
@@ -451,15 +476,15 @@ export const ImportCSV = () => {
   const openEditModal = (row) => {
     setEditingRow(row);
     setEditForm({
-      description: row.record.description || '',
-      amount: row.record.amount || '',
-      date: row.record.date || '',
-      paidBy: row.record.paidBy || '',
-      currency: row.record.currency || defaultCurrency,
-      splitType: row.record.splitType || 'EQUAL',
-      splitWith: row.record.splitWith || '',
-      splitDetails: row.record.splitDetails || '',
-      notes: row.record.notes || ''
+      description: row.record?.description || '',
+      amount: row.record?.amount || '',
+      date: row.record?.date || '',
+      paidBy: row.record?.paidBy || '',
+      currency: row.record?.currency || defaultCurrency,
+      splitType: row.record?.splitType || 'EQUAL',
+      splitWith: row.record?.splitWith || '',
+      splitDetails: row.record?.splitDetails || '',
+      notes: row.record?.notes || ''
     });
     setEditError('');
   };
@@ -534,9 +559,9 @@ export const ImportCSV = () => {
           rejected: newStatus === 'REJECTED' ? true : row.rejected,
           issues: remainingIssues,
           record: {
-            ...row.record,
+            ...(row.record || {}),
             description: editForm.description.trim(),
-            amount: Math.abs(parsedAmount), // automatically absolute if negative conversion
+            amount: parsedAmount, // preserve negative amounts for refunds
             date: editForm.date,
             paidBy: editForm.paidBy.trim(),
             currency: editForm.currency,
@@ -623,19 +648,25 @@ export const ImportCSV = () => {
       return;
     }
 
+    const pendingReview = resolvedRows.filter(r => !r.rejected && r.status === 'REVIEW_REQUIRED');
+    if (pendingReview.length > 0) {
+      setError(`Please resolve or skip all ${pendingReview.length} rows requiring review (under the 'Review Required' tab) before importing.`);
+      return;
+    }
+
     setIsImporting(true);
     setError('');
 
     try {
       const rowsPayload = resolvedRows.map(row => ({
-        date: row.record.date,
-        description: row.record.description,
-        paidBy: row.record.paidBy,
-        amount: row.record.amount,
-        currency: row.record.currency,
-        splitType: row.record.splitType,
-        splitWith: row.record.splitWith,
-        splitDetails: row.record.splitDetails,
+        date: row.record?.date || row.rawRow?.split(',')[0] || '',
+        description: row.record?.description || 'Rejected Row',
+        paidBy: row.record?.paidBy || '',
+        amount: row.record?.amount || 0,
+        currency: row.record?.currency || defaultCurrency,
+        splitType: row.record?.splitType || 'EQUAL',
+        splitWith: row.record?.splitWith || '',
+        splitDetails: row.record?.splitDetails || '',
         convertToSettlement: row.convertToSettlement || false,
         duplicateStrategy: row.duplicateStrategy || 'keep_both',
         rejected: row.rejected || row.status === 'REJECTED',
@@ -699,8 +730,8 @@ export const ImportCSV = () => {
       });
     });
 
-    const refundsCount = activeRows.filter(r => r.issues?.some(i => i.type === 'NEGATIVE_AMOUNT')).length;
-    const duplicatesCount = activeRows.filter(r => r.issues?.some(i => i.type === 'DUPLICATE') && r.duplicateStrategy !== 'skip').length;
+    const refundsCount = activeRows.filter(r => r.record?.isRefund || r.issues?.some(i => i.type === 'REFUND_DETECTED' || i.type === 'NEGATIVE_AMOUNT')).length;
+    const duplicatesCount = activeRows.filter(r => r.issues?.some(i => i.type === 'DUPLICATE' || i.type === 'DUPLICATE_CONFIRMED' || i.type === 'POSSIBLE_DUPLICATE') && r.duplicateStrategy !== 'skip').length;
     const settlementsCount = activeRows.filter(r => r.convertToSettlement).length;
     const warningsCount = activeRows.filter(r => r.issues?.some(i => i.severity === 'WARNING')).length;
 
@@ -717,6 +748,27 @@ export const ImportCSV = () => {
 
   const previewStats = getPreviewSummary();
   const tabCounts = getTabCounts();
+  const secondaryMetrics = {
+    refunds: resolvedRows.filter(r => r.record?.isRefund || r.issues?.some(i => i.type === 'REFUND_DETECTED' || i.type === 'NEGATIVE_AMOUNT')).length,
+    confirmedDuplicates: resolvedRows.filter(r => r.issues?.some(i => i.type === 'DUPLICATE_CONFIRMED')).length,
+    possibleDuplicates: resolvedRows.filter(r => r.issues?.some(i => i.type === 'POSSIBLE_DUPLICATE')).length,
+    unknownPayers: resolvedRows.filter(r => r.issues?.some(i => i.type === 'UNKNOWN_PAYER')).length,
+    futureDates: resolvedRows.filter(r => r.issues?.some(i => i.type === 'FUTURE_DATE')).length,
+    missingParticipants: resolvedRows.filter(r => r.issues?.some(i => i.type === 'PARTICIPANTS_MISSING' || i.type === 'MISSING_PARTICIPANTS')).length,
+    multiCurrencyRows: resolvedRows.filter(r => r.issues?.some(i => i.type === 'MULTI_CURRENCY_IMPORT' || i.type === 'MULTIPLE_CURRENCIES')).length,
+  };
+
+  const getCurrencyBreakdown = () => {
+    const breakdown = {};
+    resolvedRows.forEach(r => {
+      if (!r.rejected && r.record) {
+        const cur = r.record.currency || defaultCurrency;
+        breakdown[cur] = (breakdown[cur] || 0) + r.record.amount;
+      }
+    });
+    return breakdown;
+  };
+  const currencyBreakdown = getCurrencyBreakdown();
 
   // Filter rows matching tab
   const getTabRows = () => {
@@ -765,28 +817,47 @@ export const ImportCSV = () => {
               Your financial records have been parsed, validated, and resolved inside a secure database transaction.
             </p>
           </div>
-
-          {/* Stats grid */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-2xl mx-auto py-4">
+                     {/* Stats grid */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-4xl mx-auto py-4">
             <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-dark-950/40 border border-slate-100 dark:border-dark-800">
               <span className="block text-2xl font-bold text-slate-800 dark:text-dark-50">{importResult.importedCount}</span>
               <span className="text-xs text-slate-450 uppercase font-semibold">Imported</span>
             </div>
             <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-dark-950/40 border border-slate-100 dark:border-dark-800">
-              <span className="block text-2xl font-bold text-amber-600 dark:text-amber-400">{importResult.duplicatesCount}</span>
-              <span className="text-xs text-slate-450 uppercase font-semibold">Duplicates</span>
+              <span className="block text-2xl font-bold text-orange-600 dark:text-orange-400">{importResult.refundsCount || 0}</span>
+              <span className="text-xs text-slate-450 uppercase font-semibold">Refunds</span>
             </div>
             <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-dark-950/40 border border-slate-100 dark:border-dark-800">
-              <span className="block text-2xl font-bold text-indigo-600 dark:text-indigo-400">{importResult.settlementsCount}</span>
-              <span className="text-xs text-slate-450 uppercase font-semibold">Settlements</span>
+              <span className="block text-2xl font-bold text-amber-600 dark:text-amber-400">{importResult.confirmedDuplicatesCount || 0}</span>
+              <span className="text-xs text-slate-450 uppercase font-semibold">Confirmed Dups</span>
             </div>
             <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-dark-950/40 border border-slate-100 dark:border-dark-800">
-              <span className="block text-2xl font-bold text-rose-500 dark:text-rose-400">{importResult.skippedCount}</span>
+              <span className="block text-2xl font-bold text-yellow-605 dark:text-yellow-400">{importResult.possibleDuplicatesCount || 0}</span>
+              <span className="text-xs text-slate-450 uppercase font-semibold">Possible Dups</span>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-dark-950/40 border border-slate-100 dark:border-dark-800">
+              <span className="block text-2xl font-bold text-rose-500 dark:text-rose-455">{importResult.rejectedCount || importResult.skippedCount}</span>
               <span className="text-xs text-slate-450 uppercase font-semibold">Skipped</span>
             </div>
             <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-dark-950/40 border border-slate-100 dark:border-dark-800">
-              <span className="block text-2xl font-bold text-teal-600 dark:text-teal-400">{importResult.guestsCreated?.length || 0}</span>
-              <span className="text-xs text-slate-450 uppercase font-semibold">Guests</span>
+              <span className="block text-2xl font-bold text-indigo-650 dark:text-indigo-400">{importResult.reviewRequiredCount || 0}</span>
+              <span className="text-xs text-slate-450 uppercase font-semibold">Reviewed</span>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-dark-950/40 border border-slate-100 dark:border-dark-800">
+              <span className="block text-2xl font-bold text-rose-600 dark:text-rose-400">{importResult.unknownPayersCount || 0}</span>
+              <span className="text-xs text-slate-450 uppercase font-semibold">Unknown Payers</span>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-dark-950/40 border border-slate-100 dark:border-dark-800">
+              <span className="block text-2xl font-bold text-blue-600 dark:text-blue-400">{importResult.futureDatesCount || 0}</span>
+              <span className="text-xs text-slate-450 uppercase font-semibold">Future Dates</span>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-dark-950/40 border border-slate-100 dark:border-dark-800">
+              <span className="block text-2xl font-bold text-indigo-605 dark:text-indigo-400">{importResult.settlementsCount}</span>
+              <span className="text-xs text-slate-450 uppercase font-semibold">Settlements</span>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-dark-950/40 border border-slate-100 dark:border-dark-800">
+              <span className="block text-2xl font-bold text-teal-650 dark:text-teal-400">{importResult.guestsCreated?.length || 0}</span>
+              <span className="text-xs text-slate-450 uppercase font-semibold">Guests Created</span>
             </div>
           </div>
 
@@ -1017,6 +1088,38 @@ export const ImportCSV = () => {
               </div>
             </div>
 
+            {/* Compliance Issues Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-4">
+              <div className="rounded-2xl p-3 bg-orange-50/50 text-orange-700 dark:bg-orange-950/20 dark:text-orange-400 border border-orange-200/40 text-center font-sans">
+                <span className="block text-lg font-bold">{secondaryMetrics.refunds}</span>
+                <span className="text-[9px] font-semibold uppercase tracking-wider block mt-0.5">Refunds</span>
+              </div>
+              <div className="rounded-2xl p-3 bg-amber-50/50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-200/40 text-center font-sans">
+                <span className="block text-lg font-bold">{secondaryMetrics.confirmedDuplicates}</span>
+                <span className="text-[9px] font-semibold uppercase tracking-wider block mt-0.5">Confirmed Dups</span>
+              </div>
+              <div className="rounded-2xl p-3 bg-yellow-50/55 text-yellow-700 dark:bg-yellow-950/20 dark:text-yellow-400 border border-yellow-200/40 text-center font-sans">
+                <span className="block text-lg font-bold">{secondaryMetrics.possibleDuplicates}</span>
+                <span className="text-[9px] font-semibold uppercase tracking-wider block mt-0.5">Possible Dups</span>
+              </div>
+              <div className="rounded-2xl p-3 bg-rose-50/50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-200/40 text-center font-sans">
+                <span className="block text-lg font-bold">{secondaryMetrics.unknownPayers}</span>
+                <span className="text-[9px] font-semibold uppercase tracking-wider block mt-0.5">Unknown Payers</span>
+              </div>
+              <div className="rounded-2xl p-3 bg-blue-50/50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400 border border-blue-200/40 text-center font-sans">
+                <span className="block text-lg font-bold">{secondaryMetrics.futureDates}</span>
+                <span className="text-[9px] font-semibold uppercase tracking-wider block mt-0.5">Future Dates</span>
+              </div>
+              <div className="rounded-2xl p-3 bg-indigo-50/50 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 border border-indigo-200/40 text-center font-sans">
+                <span className="block text-lg font-bold">{secondaryMetrics.missingParticipants}</span>
+                <span className="text-[9px] font-semibold uppercase tracking-wider block mt-0.5">Missing Splits</span>
+              </div>
+              <div className="rounded-2xl p-3 bg-teal-50/50 text-teal-700 dark:bg-teal-950/20 dark:text-teal-400 border border-teal-200/40 text-center font-sans">
+                <span className="block text-lg font-bold">{secondaryMetrics.multiCurrencyRows}</span>
+                <span className="text-[9px] font-semibold uppercase tracking-wider block mt-0.5">Multi-Currency</span>
+              </div>
+            </div>
+
             {/* RESOLUTION TABS */}
             <div className="glass-card rounded-3xl border border-white/20 dark:border-dark-800 bg-white/70 dark:bg-dark-900/60 shadow-xl overflow-hidden">
               
@@ -1240,10 +1343,10 @@ export const ImportCSV = () => {
                               </div>
                             </div>
 
-                            {/* Interactive Resolution widgets */}
-                            {issue.type === 'DUPLICATE' && (
+                            {/* Interactive Resolution Actions */}
+                            {(issue.type === 'DUPLICATE' || issue.type === 'DUPLICATE_CONFIRMED' || issue.type === 'POSSIBLE_DUPLICATE') && (
                               <div className="pl-6 flex items-center gap-3">
-                                <span className="font-semibold text-slate-700 dark:text-dark-250">Resolve duplicate:</span>
+                                <span className="font-semibold text-slate-705 dark:text-dark-250">Resolve duplicate:</span>
                                 <div className="flex gap-2">
                                   {[
                                     { strategy: 'skip', label: 'Keep Existing (Skip)' },
@@ -1281,25 +1384,103 @@ export const ImportCSV = () => {
                               </div>
                             )}
 
-                            {issue.type === 'UNKNOWN_MEMBER' && (
-                              <div className="pl-6 flex flex-col gap-2">
-                                <span className="font-semibold text-slate-750 dark:text-dark-250">Resolve Payer name mapping:</span>
-                                <div className="flex items-center gap-2">
+                            {(issue.type === 'UNKNOWN_MEMBER' || issue.type === 'UNKNOWN_PAYER') && (
+                              <div className="pl-6 flex flex-col gap-3">
+                                <span className="font-semibold text-slate-750 dark:text-dark-250">Resolve Unknown Payer:</span>
+                                <div className="flex flex-wrap items-center gap-3">
                                   <select
                                     value={row.resolvedPayerName || ''}
                                     onChange={(e) => {
                                       const val = e.target.value;
                                       if (val) resolveUnknownPayer(row.rowNumber, val);
                                     }}
-                                    className="rounded-lg border-slate-350 text-xs bg-white py-1 px-2.5 text-slate-800 focus:outline-none dark:bg-dark-950 dark:border-dark-700 dark:text-dark-100"
+                                    className="rounded-lg border-slate-350 text-xs bg-white py-1 px-2.5 text-slate-805 focus:outline-none dark:bg-dark-950 dark:border-dark-700 dark:text-dark-100"
                                   >
-                                    <option value="">-- Re-map Payer --</option>
+                                    <option value="">-- Map to Existing Member --</option>
                                     {groupMembers.filter(m => m && m.name).map(m => (
                                       <option key={m.id} value={m.name}>{m.name}</option>
                                     ))}
                                   </select>
-                                  <span className="text-2xs text-slate-400">or default to guest user profile creation.</span>
+                                  
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      // Clear unknown payer warning locally
+                                      setResolvedRows(prev => prev.map(r => {
+                                        if (r.rowNumber === row.rowNumber) {
+                                          return {
+                                            ...r,
+                                            issues: r.issues.filter(i => i.type !== 'UNKNOWN_PAYER' && i.type !== 'UNKNOWN_MEMBER')
+                                          };
+                                        }
+                                        return r;
+                                      }));
+                                    }}
+                                    className="px-3 py-1 rounded-lg font-bold border bg-brand-50 text-brand-700 hover:bg-brand-100 border-brand-200 dark:bg-brand-950/20 dark:text-brand-400 dark:border-brand-900/30 text-xs transition-all"
+                                  >
+                                    Create Guest Profile
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleRejectRow(row.rowNumber)}
+                                    className="px-3 py-1 rounded-lg font-bold border bg-rose-50 text-rose-705 hover:bg-rose-100 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30 text-xs transition-all"
+                                  >
+                                    Reject Row
+                                  </button>
                                 </div>
+                              </div>
+                            )}
+
+                            {(issue.type === 'PARTICIPANTS_MISSING' || issue.type === 'MISSING_PARTICIPANTS') && (
+                              <div className="pl-6 flex flex-col gap-2">
+                                <span className="font-semibold text-slate-755 dark:text-dark-250">Resolve missing participants:</span>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => resolveMissingParticipantsWithAll(row.rowNumber)}
+                                    className="px-3 py-1 rounded-lg font-bold border bg-brand-50 text-brand-700 hover:bg-brand-100 border-brand-200 dark:bg-brand-950/20 dark:text-brand-400 dark:border-brand-900/30 transition-all text-xs"
+                                  >
+                                    Split With All Group Members
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditModal(row)}
+                                    className="px-3 py-1 rounded-lg font-bold border bg-white hover:bg-slate-100 text-slate-655 border-slate-202 dark:bg-dark-900 dark:border-dark-750 dark:hover:bg-dark-800 transition-all text-xs"
+                                  >
+                                    Select Manually (Edit Details)
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleRejectRow(row.rowNumber)}
+                                    className="px-3 py-1 rounded-lg font-bold border bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30 transition-all text-xs"
+                                  >
+                                    Reject/Skip Row
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {issue.type === 'FUTURE_DATE' && (
+                              <div className="pl-6 flex items-center gap-3">
+                                <span className="font-semibold text-slate-705 dark:text-dark-250">Future Date Confirmation:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setResolvedRows(prev => prev.map(r => {
+                                      if (r.rowNumber === row.rowNumber) {
+                                        return {
+                                          ...r,
+                                          issues: r.issues.filter(i => i.type !== 'FUTURE_DATE')
+                                        };
+                                      }
+                                      return r;
+                                    }));
+                                  }}
+                                  className="px-3 py-1 rounded-lg font-bold border bg-brand-50 text-brand-700 hover:bg-brand-100 border-brand-200 dark:bg-brand-950/20 dark:text-brand-400 dark:border-brand-900/30 text-xs transition-all"
+                                >
+                                  Confirm Future Date Import
+                                </button>
                               </div>
                             )}
 
@@ -1396,6 +1577,19 @@ export const ImportCSV = () => {
                   <span className="font-bold text-slate-700 dark:text-dark-250">{previewStats.warnings}</span>
                 </div>
               </div>
+
+              {/* Currency Breakdown list */}
+              {Object.keys(currencyBreakdown).length > 1 && (
+                <div className="bg-slate-50 dark:bg-dark-950/40 p-3 rounded-2xl border border-slate-100 dark:border-dark-850 space-y-1.5 text-xs">
+                  <p className="text-2xs font-bold text-slate-400 uppercase tracking-wider block">Currency Breakdown</p>
+                  {Object.entries(currencyBreakdown).map(([cur, amt]) => (
+                    <div key={cur} className="flex justify-between font-semibold">
+                      <span className="text-slate-500">{cur}</span>
+                      <span className="text-slate-805 dark:text-dark-100">{amt.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Guests checklist review */}
               {previewStats.guestsList.length > 0 && (

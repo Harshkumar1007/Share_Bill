@@ -88,6 +88,85 @@ export const validateImportCSV = async (req, res, next) => {
           rejectedCount: validationReport.summary.rejectedCount
         }
       });
+
+      // Log specific compliance warnings
+      for (const row of validationReport.rows) {
+        if (row.issues && Array.isArray(row.issues)) {
+          for (const issue of row.issues) {
+            if (issue.type === 'REFUND_DETECTED') {
+              await logActivity({
+                type: 'REFUND_DETECTED',
+                userId: req.user.id,
+                userName: user?.name,
+                groupId,
+                groupName: group.name,
+                message: `Refund of ${row.record?.currency || 'USD'} ${row.record?.amount || 0} detected on Row ${row.rowNumber} ("${row.record?.description}")`,
+                details: { rowNumber: row.rowNumber, amount: row.record?.amount }
+              });
+            } else if (issue.type === 'DUPLICATE_CONFIRMED') {
+              await logActivity({
+                type: 'DUPLICATE_CONFIRMED',
+                userId: req.user.id,
+                userName: user?.name,
+                groupId,
+                groupName: group.name,
+                message: `Confirmed duplicate detected on Row ${row.rowNumber} ("${row.record?.description}")`,
+                details: { rowNumber: row.rowNumber, description: row.record?.description }
+              });
+            } else if (issue.type === 'POSSIBLE_DUPLICATE') {
+              await logActivity({
+                type: 'POSSIBLE_DUPLICATE',
+                userId: req.user.id,
+                userName: user?.name,
+                groupId,
+                groupName: group.name,
+                message: `Possible duplicate detected on Row ${row.rowNumber} ("${row.record?.description}")`,
+                details: { rowNumber: row.rowNumber, description: row.record?.description }
+              });
+            } else if (issue.type === 'UNKNOWN_PAYER') {
+              await logActivity({
+                type: 'UNKNOWN_PAYER',
+                userId: req.user.id,
+                userName: user?.name,
+                groupId,
+                groupName: group.name,
+                message: `Unknown payer on Row ${row.rowNumber} ("${row.record?.description}"): ${row.record?.paidBy || 'N/A'}`,
+                details: { rowNumber: row.rowNumber, paidBy: row.record?.paidBy }
+              });
+            } else if (issue.type === 'FUTURE_DATE') {
+              await logActivity({
+                type: 'FUTURE_DATE',
+                userId: req.user.id,
+                userName: user?.name,
+                groupId,
+                groupName: group.name,
+                message: `Future date detected on Row ${row.rowNumber} ("${row.record?.description}"): ${row.record?.date}`,
+                details: { rowNumber: row.rowNumber, date: row.record?.date }
+              });
+            } else if (issue.type === 'MULTI_CURRENCY_IMPORT') {
+              await logActivity({
+                type: 'MULTI_CURRENCY_IMPORT',
+                userId: req.user.id,
+                userName: user?.name,
+                groupId,
+                groupName: group.name,
+                message: `Multi-currency row detected on Row ${row.rowNumber} ("${row.record?.description}"): ${row.record?.currency}`,
+                details: { rowNumber: row.rowNumber, currency: row.record?.currency }
+              });
+            } else if (issue.type === 'PARTICIPANTS_MISSING') {
+              await logActivity({
+                type: 'PARTICIPANTS_MISSING',
+                userId: req.user.id,
+                userName: user?.name,
+                groupId,
+                groupName: group.name,
+                message: `Participant splits missing on Row ${row.rowNumber} ("${row.record?.description}")`,
+                details: { rowNumber: row.rowNumber, description: row.record?.description }
+              });
+            }
+          }
+        }
+      }
     } catch (logError) {
       console.error('Failed to log CSV validation activity:', logError);
     }
@@ -134,6 +213,12 @@ export const commitCleanImport = async (req, res, next) => {
     let duplicatesCount = 0;
     let settlementsCount = 0;
     let guestMembersCreated = [];
+    let confirmedDuplicatesCount = 0;
+    let possibleDuplicatesCount = 0;
+    let unknownPayersCount = 0;
+    let futureDatesCount = 0;
+    let missingParticipantsCount = 0;
+    let multiCurrencyRowsCount = 0;
 
     // Perform database writes in transaction
     await prisma.$transaction(async (tx) => {
@@ -225,8 +310,17 @@ export const commitCleanImport = async (req, res, next) => {
         const paidById = await getOrCreateUser(paidBy);
 
         // Track stats
-        if (amount < 0 || row.issues?.some(i => i.type === 'NEGATIVE_AMOUNT')) {
+        if (amount < 0 || row.isRefund || row.issues?.some(i => i.type === 'REFUND_DETECTED' || i.type === 'NEGATIVE_AMOUNT')) {
           refundsCount++;
+        }
+
+        if (row.issues && Array.isArray(row.issues)) {
+          if (row.issues.some(i => i.type === 'DUPLICATE_CONFIRMED')) confirmedDuplicatesCount++;
+          if (row.issues.some(i => i.type === 'POSSIBLE_DUPLICATE')) possibleDuplicatesCount++;
+          if (row.issues.some(i => i.type === 'UNKNOWN_PAYER')) unknownPayersCount++;
+          if (row.issues.some(i => i.type === 'FUTURE_DATE')) futureDatesCount++;
+          if (row.issues.some(i => i.type === 'PARTICIPANTS_MISSING')) missingParticipantsCount++;
+          if (row.issues.some(i => i.type === 'MULTI_CURRENCY_IMPORT')) multiCurrencyRowsCount++;
         }
 
         if (convertToSettlement) {
@@ -329,7 +423,8 @@ export const commitCleanImport = async (req, res, next) => {
               date: new Date(date),
               groupId,
               paidById,
-              splitType: splitType
+              splitType: splitType,
+              isRefund: row.isRefund || false
             }
           });
 
@@ -378,7 +473,15 @@ export const commitCleanImport = async (req, res, next) => {
         refundsCount,
         duplicatesCount,
         settlementsCount,
-        guestsCreated: guestMembersCreated
+        guestsCreated: guestMembersCreated,
+        rejectedCount: skippedCount,
+        reviewRequiredCount: rows.filter(r => r.status === 'REVIEW_REQUIRED' || (r.issues && r.issues.some(i => i.severity === 'REVIEW_REQUIRED'))).length,
+        confirmedDuplicatesCount,
+        possibleDuplicatesCount,
+        unknownPayersCount,
+        futureDatesCount,
+        missingParticipantsCount,
+        multiCurrencyRowsCount
       }
     });
   } catch (error) {

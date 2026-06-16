@@ -184,7 +184,7 @@ export const parseSplitDetails = (detailsStr, participants = []) => {
 /**
  * Scans a single CSV row for compliance rules and outputs issue arrays.
  */
-export const validateCSVRow = (rowFields, headerMap, groupMembers, existingExpenses, defaultCurrency) => {
+export const validateCSVRow = (rowFields, headerMap, groupMembers, existingExpenses, defaultCurrency, parsedRows = []) => {
   const rawDate = rowFields[headerMap['date']] || '';
   const rawDescription = rowFields[headerMap['description']] || '';
   const rawPaidBy = rowFields[headerMap['paid_by']] || '';
@@ -226,6 +226,8 @@ export const validateCSVRow = (rowFields, headerMap, groupMembers, existingExpen
     return { status: 'REJECTED', issues, autoFixes, record: null };
   }
 
+  let isRefund = false;
+
   // 2. Validate Amount Bounds
   let parsedAmount = parseFloat(cleanAmount);
   if (isNaN(parsedAmount)) {
@@ -245,21 +247,13 @@ export const validateCSVRow = (rowFields, headerMap, groupMembers, existingExpen
     });
     return { status: 'REJECTED', issues, autoFixes, record: null };
   } else if (parsedAmount < 0) {
-    const absVal = Math.abs(parsedAmount);
-    autoFixes.push({
-      field: 'amount',
-      from: parsedAmount,
-      to: absVal,
-      type: 'REFUND_CONVERSION'
-    });
+    isRefund = true;
     issues.push({
-      type: 'NEGATIVE_AMOUNT',
+      type: 'REFUND_DETECTED',
       severity: 'WARNING',
-      explanation: `Negative amount (${cleanAmount}) detected. Auto-converting to a refund with absolute value ${absVal}.`,
-      resolutionPolicy: 'Converted negative amount to positive absolute refund value.'
+      explanation: `Refund Detected: Negative amount (${cleanAmount}) detected. Original financial value is preserved exactly.`,
+      resolutionPolicy: 'Import as a Refund with original negative value.'
     });
-    parsedAmount = absVal;
-    cleanAmount = String(absVal);
   }
 
   // 3. Date Normalization & Ambiguity checks
@@ -297,6 +291,20 @@ export const validateCSVRow = (rowFields, headerMap, groupMembers, existingExpen
         resolutionPolicy: 'Presents user choices to resolve date ambiguity (e.g. Month/Day mapping).'
       });
     }
+
+    // Future Date Check
+    const expDate = new Date(cleanDate);
+    const currentDate = new Date();
+    const expMidnight = new Date(expDate.getFullYear(), expDate.getMonth(), expDate.getDate());
+    const currMidnight = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+    if (expMidnight > currMidnight) {
+      issues.push({
+        type: 'FUTURE_DATE',
+        severity: 'WARNING',
+        explanation: `Date '${cleanDate}' is in the future relative to the current date.`,
+        resolutionPolicy: 'User must confirm: verify date or keep to import.'
+      });
+    }
   }
 
   // 4. Currency Validations
@@ -316,10 +324,10 @@ export const validateCSVRow = (rowFields, headerMap, groupMembers, existingExpen
     cleanCurrency = defaultCurrency;
   } else if (cleanCurrency.toUpperCase() !== defaultCurrency.toUpperCase()) {
     issues.push({
-      type: 'MULTIPLE_CURRENCIES',
+      type: 'MULTI_CURRENCY_IMPORT',
       severity: 'WARNING',
-      explanation: `Preserved currency '${cleanCurrency}' which differs from default '${defaultCurrency}'.`,
-      resolutionPolicy: 'Preserved original currency (converts values on demand).'
+      explanation: `Preserved currency '${cleanCurrency}' which differs from default '${defaultCurrency}'. Original currency will be preserved exactly without auto-conversion.`,
+      resolutionPolicy: 'Preserved original currency.'
     });
   }
 
@@ -367,10 +375,10 @@ export const validateCSVRow = (rowFields, headerMap, groupMembers, existingExpen
     resolvedPayer = matchedPayer;
   } else {
     issues.push({
-      type: 'UNKNOWN_MEMBER',
-      severity: 'WARNING',
-      explanation: `Payer '${cleanPaidBy}' is not a member of the group.`,
-      resolutionPolicy: 'A guest profile will be automatically created on final commit.'
+      type: 'UNKNOWN_PAYER',
+      severity: 'REVIEW_REQUIRED',
+      explanation: `Payer '${cleanPaidBy}' is not a member of this group.`,
+      resolutionPolicy: 'User must resolve: Map to an existing group member, confirm guest member creation, or reject/skip row.'
     });
   }
 
@@ -378,12 +386,11 @@ export const validateCSVRow = (rowFields, headerMap, groupMembers, existingExpen
   const splitWithList = cleanSplitWith ? cleanSplitWith.split(/[;,]/).map(s => s.trim()).filter(s => s !== '') : [];
   if (splitWithList.length === 0) {
     issues.push({
-      type: 'MISSING_PARTICIPANTS',
-      severity: 'CRITICAL',
-      explanation: 'At least one split participant is required.',
-      resolutionPolicy: 'Rejected. You must supply split participants.'
+      type: 'PARTICIPANTS_MISSING',
+      severity: 'REVIEW_REQUIRED',
+      explanation: `Split participants are missing. Payer is '${cleanPaidBy}'.`,
+      resolutionPolicy: 'Provide participants: choose to split with all group members, select manually, or reject row.'
     });
-    return { status: 'REJECTED', issues, autoFixes, record: null };
   } else {
     splitWithList.forEach(participant => {
       const matchedPart = findGroupMember(participant, groupMembers);
@@ -409,17 +416,53 @@ export const validateCSVRow = (rowFields, headerMap, groupMembers, existingExpen
   }
 
   // 9. Split Percentage sum validation (100% check)
-  if (cleanSplitType === 'PERCENTAGE' && cleanSplitDetails) {
-    const details = parseSplitDetails(cleanSplitDetails, splitWithList);
-    const sum = details.reduce((acc, cur) => acc + (cur.value || 0), 0);
-    if (Math.abs(sum - 100) > 0.05) {
+  if (cleanSplitType === 'PERCENTAGE') {
+    if (!cleanSplitDetails) {
       issues.push({
         type: 'PERCENTAGE_SPLIT_CONFLICT',
         severity: 'CRITICAL',
-        explanation: `Split type is PERCENTAGE but details sum to ${sum}% instead of 100%.`,
-        resolutionPolicy: 'Rejected. Percentage weights must sum to exactly 100%.'
+        explanation: `Split type is PERCENTAGE but no split details were provided.`,
+        resolutionPolicy: 'Rejected. You must supply split percentages.'
       });
       return { status: 'REJECTED', issues, autoFixes, record: null };
+    } else {
+      const details = parseSplitDetails(cleanSplitDetails, splitWithList);
+      const sum = details.reduce((acc, cur) => acc + (cur.value || 0), 0);
+      if (Math.abs(sum - 100) > 0.05) {
+        issues.push({
+          type: 'PERCENTAGE_SPLIT_CONFLICT',
+          severity: 'CRITICAL',
+          explanation: `Split type is PERCENTAGE but details sum to ${sum}% instead of 100%.`,
+          resolutionPolicy: 'Rejected. Percentage weights must sum to exactly 100%.'
+        });
+        return { status: 'REJECTED', issues, autoFixes, record: null };
+      }
+    }
+  }
+
+  // 9.b Split EXACT sum validation
+  if (cleanSplitType === 'EXACT') {
+    if (!cleanSplitDetails) {
+      issues.push({
+        type: 'SPLIT_MISMATCH',
+        severity: 'CRITICAL',
+        explanation: `Split type is EXACT but no custom split details were provided.`,
+        resolutionPolicy: 'Rejected. You must supply split details for EXACT split type.'
+      });
+      return { status: 'REJECTED', issues, autoFixes, record: null };
+    } else {
+      const details = parseSplitDetails(cleanSplitDetails, splitWithList);
+      const sum = details.reduce((acc, cur) => acc + (cur.value || 0), 0);
+      if (Math.abs(Math.abs(sum) - Math.abs(parsedAmount)) > 0.05) {
+        const diff = Math.round((Math.abs(parsedAmount) - Math.abs(sum)) * 100) / 100;
+        issues.push({
+          type: 'SPLIT_MISMATCH',
+          severity: 'CRITICAL',
+          explanation: `Split type is EXACT but splits sum to ${sum} instead of ${parsedAmount} (Expected: ${parsedAmount}, Actual: ${sum}, Difference: ${diff}).`,
+          resolutionPolicy: 'Rejected. Exact split amounts must sum to the total expense amount.'
+        });
+        return { status: 'REJECTED', issues, autoFixes, record: null };
+      }
     }
   }
 
@@ -493,55 +536,118 @@ export const validateCSVRow = (rowFields, headerMap, groupMembers, existingExpen
     status = 'WARNING';
   }
 
-  // If not already rejected/review required, verify duplicates in database
+  // If not already rejected/review required, verify duplicates
   if (status !== 'REJECTED') {
     const isPayerMember = !!resolvedPayer;
     
-    // exact duplicate scan
-    const exactDup = existingExpenses.find(exp => {
-      const expDateStr = new Date(exp.date).toISOString().split('T')[0];
-      const samePayer = isPayerMember && exp.paidById === resolvedPayer.user.id;
-      const sameAmount = Math.abs(exp.amount - parsedAmount) < 0.001;
-      const sameDate = expDateStr === cleanDate;
-      const sameDesc = exp.description.trim() === cleanDesc;
-      return samePayer && sameAmount && sameDate && sameDesc;
+    // Phase 1: Check duplicate within the uploaded CSV (Intra-CSV)
+    let isIntraExact = false;
+    let isIntraNear = false;
+    let intraExactRow = null;
+    let intraNearRow = null;
+    let intraNearSim = 0;
+
+    parsedRows.forEach(prevRow => {
+      const isSamePayer = prevRow.paidBy.toLowerCase().trim() === cleanPaidBy.toLowerCase().trim();
+      const isSameDate = prevRow.date === cleanDate;
+      if (isSamePayer && isSameDate) {
+        const normPrevDesc = prevRow.description.toLowerCase().trim();
+        const normCurrDesc = cleanDesc.toLowerCase().trim();
+        const isExactDesc = normPrevDesc === normCurrDesc;
+        const isSameAmount = Math.abs(prevRow.amount - parsedAmount) < 0.001;
+
+        if (isExactDesc && isSameAmount) {
+          isIntraExact = true;
+          intraExactRow = prevRow;
+        } else {
+          const sim = getSimilarityScore(prevRow.description, cleanDesc);
+          if (sim > 0.85 && sim < 1.0) {
+            if (sim > intraNearSim) {
+              intraNearSim = sim;
+              isIntraNear = true;
+              intraNearRow = prevRow;
+            }
+          }
+        }
+      }
     });
 
-    if (exactDup) {
-      status = 'WARNING';
+    if (isIntraExact) {
       issues.push({
-        type: 'DUPLICATE',
+        type: 'DUPLICATE_CONFIRMED',
         severity: 'WARNING',
-        explanation: `Exact duplicate of existing expense on ${cleanDate}`,
-        resolutionPolicy: 'Choose: Keep Existing (skip row), Import New (create duplicate), or Keep Both.'
+        explanation: `Confirmed duplicate of Row ${intraExactRow.rowNumber} inside this CSV (Same Date, Payer, Amount, and Description).`,
+        resolutionPolicy: 'User must decide: Keep Existing (skip row), Import New, or Keep Both.'
       });
-    } else {
-      // near duplicate scan
-      let highestSim = 0;
-      let similarDup = null;
+    } else if (isIntraNear) {
+      const pct = Math.round(intraNearSim * 100);
+      issues.push({
+        type: 'POSSIBLE_DUPLICATE',
+        severity: 'WARNING',
+        explanation: `Possible duplicate of Row ${intraNearRow.rowNumber} inside this CSV: description similarity ${pct}% (Same Date, Payer).`,
+        resolutionPolicy: 'User must decide: Keep Existing (skip row), Import New, or Keep Both.'
+      });
+    }
+
+    // Check against database records
+    let isDbExact = false;
+    let isDbNear = false;
+    let dbNearSim = 0;
+    let dbNearExp = null;
+
+    if (isPayerMember) {
       existingExpenses.forEach(exp => {
-        const samePayer = isPayerMember && exp.paidById === resolvedPayer.user.id;
-        const sameAmount = Math.abs(exp.amount - parsedAmount) < 0.001;
-        if (samePayer && sameAmount) {
-          const sim = getSimilarityScore(exp.description, cleanDesc);
-          if (sim > highestSim) {
-            highestSim = sim;
-            similarDup = exp;
+        const expDateStr = new Date(exp.date).toISOString().split('T')[0];
+        const isSamePayer = exp.paidById === resolvedPayer.user.id;
+        const isSameDate = expDateStr === cleanDate;
+
+        if (isSamePayer && isSameDate) {
+          const normPrevDesc = exp.description.toLowerCase().trim();
+          const normCurrDesc = cleanDesc.toLowerCase().trim();
+          const isExactDesc = normPrevDesc === normCurrDesc;
+          const isSameAmount = Math.abs(exp.amount - parsedAmount) < 0.001;
+
+          if (isExactDesc && isSameAmount) {
+            isDbExact = true;
+          } else {
+            const sim = getSimilarityScore(exp.description, cleanDesc);
+            if (sim > 0.85 && sim < 1.0) {
+              if (sim > dbNearSim) {
+                dbNearSim = sim;
+                isDbNear = true;
+                dbNearExp = exp;
+              }
+            }
           }
         }
       });
-
-      if (similarDup && highestSim > 0.85) {
-        status = 'WARNING';
-        const pct = Math.round(highestSim * 100);
-        issues.push({
-          type: 'DUPLICATE',
-          severity: 'WARNING',
-          explanation: `Near duplicate: similarity ${pct}% to expense on ${new Date(similarDup.date).toISOString().split('T')[0]}: "${similarDup.description}"`,
-          resolutionPolicy: 'Choose: Keep Existing, Import New, or Keep Both.'
-        });
-      }
     }
+
+    if (isDbExact) {
+      issues.push({
+        type: 'DUPLICATE_CONFIRMED',
+        severity: 'WARNING',
+        explanation: `Confirmed duplicate of existing database expense on ${cleanDate} (Same Date, Payer, Amount, and Description).`,
+        resolutionPolicy: 'User must decide: Keep Existing (skip row), Import New, or Keep Both.'
+      });
+    } else if (isDbNear) {
+      const pct = Math.round(dbNearSim * 100);
+      issues.push({
+        type: 'POSSIBLE_DUPLICATE',
+        severity: 'WARNING',
+        explanation: `Possible duplicate of existing database expense on ${new Date(dbNearExp.date).toISOString().split('T')[0]} ("${dbNearExp.description}"): description similarity ${pct}% (Same Date, Payer).`,
+        resolutionPolicy: 'User must decide: Keep Existing, Import New, or Keep Both.'
+      });
+    }
+  }
+
+  // Recalculate status based on all issues including duplicates
+  if (issues.some(i => i.severity === 'CRITICAL')) {
+    status = 'REJECTED';
+  } else if (issues.some(i => i.severity === 'REVIEW_REQUIRED')) {
+    status = 'REVIEW_REQUIRED';
+  } else if (issues.some(i => i.severity === 'WARNING')) {
+    status = 'WARNING';
   }
 
   const record = {
@@ -554,7 +660,8 @@ export const validateCSVRow = (rowFields, headerMap, groupMembers, existingExpen
     splitWith: cleanSplitWith,
     splitDetails: cleanSplitDetails,
     notes: cleanNotes,
-    suggestedSettlement
+    suggestedSettlement,
+    isRefund: isRefund
   };
 
   return {
@@ -606,6 +713,7 @@ export const runCSVValidation = (csvContent, groupMembers = [], existingExpenses
   }
 
   const rows = [];
+  const parsedRows = [];
   const summary = {
     totalRows: 0,
     validCount: 0,
@@ -621,7 +729,7 @@ export const runCSVValidation = (csvContent, groupMembers = [], existingExpenses
 
     let rowRes;
     try {
-      rowRes = validateCSVRow(rowFields, headerMap, groupMembers, existingExpenses, defaultCurrency);
+      rowRes = validateCSVRow(rowFields, headerMap, groupMembers, existingExpenses, defaultCurrency, parsedRows);
     } catch (err) {
       rowRes = {
         status: 'REJECTED',
@@ -636,6 +744,16 @@ export const runCSVValidation = (csvContent, groupMembers = [], existingExpenses
     else if (rowRes.status === 'WARNING') summary.warningCount += 1;
     else if (rowRes.status === 'REVIEW_REQUIRED') summary.reviewCount += 1;
     else if (rowRes.status === 'REJECTED') summary.rejectedCount += 1;
+
+    if (rowRes.record && rowRes.status !== 'REJECTED') {
+      parsedRows.push({
+        rowNumber,
+        description: rowRes.record.description,
+        amount: rowRes.record.amount,
+        paidBy: rowRes.record.paidBy,
+        date: rowRes.record.date
+      });
+    }
 
     rows.push({
       rowNumber,
